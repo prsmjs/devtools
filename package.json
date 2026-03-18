@@ -1,0 +1,43 @@
+{
+  "name": "@prsm/devtools",
+  "version": "0.0.1",
+  "description": "Read-only Express middleware dashboard for observing @prsm infrastructure at runtime",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist/client"
+  ],
+  "scripts": {
+    "build:client": "cd client && npm run build",
+    "prepublishOnly": "npm run build:client"
+  },
+  "keywords": [
+    "devtools",
+    "dashboard",
+    "queue",
+    "cron",
+    "rate-limit",
+    "realtime",
+    "websocket",
+    "observability"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@prsm/cron": "^1.0.0",
+    "@prsm/limit": "^1.1.0",
+    "@prsm/queue": "^2.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
