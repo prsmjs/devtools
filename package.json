@@ -1,6 +1,6 @@
 {
   "name": "@prsm/devtools",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Read-only Express middleware dashboard for observing @prsm infrastructure at runtime",
   "type": "module",
   "exports": {
