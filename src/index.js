@@ -197,7 +197,7 @@ export function prsmDevtools(options = {}) {
 
         const channels = {}
         for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
-          if (channel.startsWith('mesh:presence:updates:')) continue
+          if (channel.startsWith('rt:presence:updates:')) continue
           channels[channel] = [...subscribers].map((c) => c.id)
         }
 
@@ -222,7 +222,7 @@ export function prsmDevtools(options = {}) {
           collections: realtime.collectionManager.exposedCollections.map((e) => patternToString(e.pattern)),
           presence: realtime.presenceManager.trackedRooms.map(patternToString),
           commands: realtime.commandManager.commands
-            ? Object.keys(realtime.commandManager.commands).filter((c) => !c.startsWith('mesh/'))
+            ? Object.keys(realtime.commandManager.commands).filter((c) => !c.startsWith('rt/'))
             : [],
         }
 
@@ -246,7 +246,7 @@ export function prsmDevtools(options = {}) {
 
         const channels = []
         for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
-          if (channel.startsWith('mesh:presence:updates:')) continue
+          if (channel.startsWith('rt:presence:updates:')) continue
           for (const conn of subscribers) {
             if (conn.id === id) { channels.push(channel); break }
           }
@@ -310,7 +310,7 @@ export function prsmDevtools(options = {}) {
         const connId = req.query.connId
         if (!connId) return res.status(400).json({ error: 'connId query param required' })
 
-        const raw = await realtime.redisManager.redis.get(`mesh:collection:${collId}:${connId}`)
+        const raw = await realtime.redisManager.redis.get(`rt:collection:${collId}:${connId}`)
         if (!raw) return res.json({ recordIds: [], records: [] })
 
         const recordIds = JSON.parse(raw)
