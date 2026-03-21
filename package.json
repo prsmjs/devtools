@@ -1,6 +1,6 @@
 {
   "name": "@prsm/devtools",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Read-only Express middleware dashboard for observing @prsm infrastructure at runtime",
   "type": "module",
   "exports": {
@@ -31,9 +31,9 @@
     "express": "^4.21.0"
   },
   "devDependencies": {
-    "@prsm/cron": "^1.0.2",
-    "@prsm/limit": "^1.1.0",
-    "@prsm/queue": "^3.0.7",
+    "@prsm/cron": "^1.0.3",
+    "@prsm/limit": "^1.1.1",
+    "@prsm/queue": "^3.0.8",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7"
   },
