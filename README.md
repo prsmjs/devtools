@@ -4,7 +4,7 @@
 
 <h1 align="center">@prsm/devtools</h1>
 
-Read-only Express middleware dashboard for observing prsm infrastructure at runtime. Mount it, pass your instances, get a live UI.
+Read-only Express middleware that provides a live dashboard for observing prsm infrastructure at runtime. Pass your instances and mount the router to get a full UI.
 
 <p align="center">
   <img src=".github/record.png" width="800" alt="realtime records view">
