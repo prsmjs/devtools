@@ -63,9 +63,11 @@ onMounted(() => {
   pollTimer = setInterval(poll, 1500)
   recentTimer = setInterval(() => {
     const now = Date.now()
+    const expired = []
     for (const [k, t] of recentlyUpdated.value) {
-      if (now - t > 800) recentlyUpdated.value.delete(k)
+      if (now - t > 800) expired.push(k)
     }
+    for (const k of expired) recentlyUpdated.value.delete(k)
   }, 200)
 })
 
