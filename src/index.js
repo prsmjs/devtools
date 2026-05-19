@@ -1,7 +1,7 @@
 import { Router, static as serveStatic } from 'express'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const clientDir = resolve(__dirname, '..', 'dist', 'client')
@@ -375,9 +375,12 @@ export function prsmDevtools(options = {}) {
   }
 
   if (existsSync(clientDir)) {
-    router.use(serveStatic(clientDir))
-    router.get('*', (_req, res) => {
-      res.sendFile(resolve(clientDir, 'index.html'))
+    const indexPath = resolve(clientDir, 'index.html')
+    const indexHtml = readFileSync(indexPath, 'utf8')
+    router.use(serveStatic(clientDir, { index: false }))
+    router.get('*', (req, res) => {
+      const base = req.baseUrl ? `${req.baseUrl}/` : '/'
+      res.type('html').send(indexHtml.replace('<head>', `<head>\n    <base href="${base}">`))
     })
   }
 

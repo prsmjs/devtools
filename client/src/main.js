@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
+import { base } from './base.js'
 import App from './App.vue'
 import './style.css'
 import Overview from './pages/Overview.vue'
@@ -17,7 +18,7 @@ import RecordsView from './pages/realtime/RecordsView.vue'
 import MetadataView from './pages/realtime/MetadataView.vue'
 
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHistory(base),
   routes: [
     { path: '/', component: Overview },
     {
