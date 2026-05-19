@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from './api.js'
 
-const config = ref({ queue: false, cron: false, limit: [], workflow: false, realtime: false })
+const config = ref({ queue: false, cron: false, limit: [], workflow: false, realtime: false, cells: [] })
 const route = useRoute()
 
 onMounted(async () => {
@@ -14,6 +14,7 @@ onMounted(async () => {
 const tabs = computed(() => {
   const t = [{ label: 'overview', path: '/' }]
   if (config.value.realtime) t.push({ label: 'realtime', path: '/realtime' })
+  if (config.value.cells?.length) t.push({ label: 'cells', path: '/cells' })
   if (config.value.queue) t.push({ label: 'queue', path: '/queue' })
   if (config.value.cron) t.push({ label: 'cron', path: '/cron' })
   if (config.value.limit.length) t.push({ label: 'limits', path: '/limits' })
@@ -30,6 +31,8 @@ function isActive(tab) {
 }
 
 const isRealtimeRoute = computed(() => route.path.startsWith('/realtime'))
+const isCellsRoute = computed(() => route.path.startsWith('/cells'))
+const isWideRoute = computed(() => isRealtimeRoute.value || isCellsRoute.value)
 </script>
 
 <template>
@@ -53,6 +56,13 @@ const isRealtimeRoute = computed(() => route.path.startsWith('/realtime'))
 
     <template v-if="isRealtimeRoute">
       <router-view :config="config" />
+    </template>
+    <template v-else-if="isCellsRoute">
+      <div class="page-scroll">
+        <div class="page-content-wide">
+          <router-view :config="config" />
+        </div>
+      </div>
     </template>
     <template v-else>
       <div class="page-scroll">

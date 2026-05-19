@@ -4,7 +4,7 @@ import { useSSE } from '../sse.js'
 
 const props = defineProps({ config: Object })
 const events = useSSE()
-const enabledSources = ref({ queue: true, cron: true, limit: true, workflow: true })
+const enabledSources = ref({ queue: true, cron: true, limit: true, workflow: true, cells: true })
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString()
@@ -33,6 +33,7 @@ watch(
       cron: Boolean(config.cron),
       limit: Boolean(config.limit?.length),
       workflow: Boolean(config.workflow),
+      cells: Boolean(config.cells?.length),
     }
   },
   { immediate: true, deep: true }
@@ -79,6 +80,14 @@ const filteredEvents = computed(() =>
         @click="toggleSource('workflow')"
       >
         workflow
+      </button>
+      <button
+        class="chip"
+        :class="{ on: config.cells?.length && enabledSources.cells, off: config.cells?.length && !enabledSources.cells }"
+        :disabled="!config.cells?.length"
+        @click="toggleSource('cells')"
+      >
+        cells{{ config.cells?.length ? ` (${config.cells.length})` : '' }}
       </button>
     </div>
 

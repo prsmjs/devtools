@@ -6,6 +6,12 @@ import { existsSync } from 'node:fs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const clientDir = resolve(__dirname, '..', 'dist', 'client')
 
+function normalizeCellGraphs(cells) {
+  if (!cells) return null
+  if (typeof cells.cell === 'function') return { default: cells }
+  return cells
+}
+
 function patternToString(p) {
   if (typeof p === 'string') return p
   if (p instanceof RegExp) return p.toString()
@@ -24,6 +30,7 @@ function patternToString(p) {
 export function prsmDevtools(options = {}) {
   const router = Router()
   const { queue, cron, limit, workflow, realtime } = options
+  const cellGraphs = normalizeCellGraphs(options.cells)
   const sseClients = new Set()
 
   function broadcast(event, data) {
@@ -42,6 +49,14 @@ export function prsmDevtools(options = {}) {
   if (cron) {
     cron.on('fire', (data) => broadcast('cron:fire', { name: data.name, tickId: data.tickId }))
     cron.on('error', (data) => broadcast('cron:error', { name: data.name, error: data.error?.message }))
+  }
+
+  if (cellGraphs) {
+    for (const [graphName, g] of Object.entries(cellGraphs)) {
+      g.on((name, value, state) => {
+        broadcast('cells:change', { graph: graphName, name, value, status: state.status, updatedAt: state.updatedAt })
+      })
+    }
   }
 
   if (workflow) {
@@ -68,6 +83,7 @@ export function prsmDevtools(options = {}) {
       limit: limit ? Object.keys(limit) : [],
       workflow: !!workflow,
       realtime: !!realtime,
+      cells: cellGraphs ? Object.keys(cellGraphs) : [],
     })
   })
 
@@ -320,6 +336,38 @@ export function prsmDevtools(options = {}) {
           records.push({ id: rid, data })
         }
         res.json({ recordIds, records })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+  }
+
+  if (cellGraphs) {
+    router.get('/api/cells/:graph', (req, res) => {
+      const g = cellGraphs[req.params.graph]
+      if (!g) return res.status(404).json({ error: 'graph not found' })
+      const topology = g.cells()
+      const snapshot = g.snapshot()
+      const enriched = topology.map((c) => {
+        const state = g.get(c.name)
+        return {
+          ...c,
+          value: snapshot[c.name],
+          error: state?.error ? String(state.error.message || state.error) : null,
+          updatedAt: state?.updatedAt ?? null,
+          computeTime: state?.computeTime ?? null,
+        }
+      })
+      res.json({ graph: req.params.graph, cells: enriched })
+    })
+
+    router.get('/api/cells/:graph/:name/history', (req, res) => {
+      const g = cellGraphs[req.params.graph]
+      if (!g) return res.status(404).json({ error: 'graph not found' })
+      const limit = req.query.limit ? Number(req.query.limit) : undefined
+      try {
+        const entries = g.history(req.params.name, limit)
+        res.json({ graph: req.params.graph, name: req.params.name, entries })
       } catch (err) {
         res.status(500).json({ error: err.message })
       }

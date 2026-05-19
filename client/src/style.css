@@ -143,6 +143,10 @@ body {
   padding: 20px 24px 40px;
 }
 
+.page-content-wide {
+  padding: 20px 24px 40px;
+}
+
 .tab-bar {
   display: flex;
   align-items: center;

@@ -31,6 +31,7 @@
     "express": "^4.21.0"
   },
   "devDependencies": {
+    "@prsm/cells": "^1.1.0",
     "@prsm/cron": "^1.0.3",
     "@prsm/limit": "^1.1.1",
     "@prsm/queue": "^3.0.8",

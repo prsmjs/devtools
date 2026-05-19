@@ -29,6 +29,7 @@ import Queue from '@prsm/queue'
 import { Cron } from '@prsm/cron'
 import { slidingWindow } from '@prsm/limit'
 import WorkflowEngine from '@prsm/workflow'
+import { createGraph } from '@prsm/cells'
 import { prsmDevtools } from '@prsm/devtools'
 
 const app = express()
@@ -38,6 +39,7 @@ const queue = new Queue({ concurrency: 5 })
 const cron = new Cron()
 const apiLimiter = slidingWindow({ max: 100, window: '1m' })
 const workflow = new WorkflowEngine()
+const portfolio = createGraph({ prefix: 'portfolio:' })
 
 app.use('/devtools', prsmDevtools({
   realtime,
@@ -45,6 +47,7 @@ app.use('/devtools', prsmDevtools({
   cron,
   limit: { api: apiLimiter },
   workflow,
+  cells: { portfolio },
 }))
 
 app.listen(3000)
@@ -77,6 +80,13 @@ Includes a connection picker sidebar for filtering all views by a specific clien
 
 **Executions** - workflow execution list with filters, live graph overlay showing execution progress, per-step state, output/error inspector, and journal timeline
 
+**Cells** - one or more `@prsm/cells` graphs with two views per graph:
+
+- **Table** - every cell in the graph with current value, dependencies, status, and last-updated time. Click a row to open a detail panel below
+- **Graph** - DAG visualization with topologically-laid-out nodes and live propagation flashes when values change
+
+The detail panel shows the cell's current value (syntax-highlighted JSON), source descriptor, metadata, template body (for templated cells), recent history (for cells with history enabled), and graph relationships. Pass a single graph or a named map of graphs - the panel includes a graph picker when more than one is provided.
+
 ## API
 
 ### `prsmDevtools(options)`
@@ -96,6 +106,7 @@ app.use('/devtools', prsmDevtools(options))
 | `cron` | `Cron` | A `@prsm/cron` instance |
 | `limit` | `Object<string, Limiter>` | Named limiters from `@prsm/limit` |
 | `workflow` | `WorkflowEngine` | An `@prsm/workflow` engine instance |
+| `cells` | `Graph` or `Object<string, Graph>` | A `@prsm/cells` graph instance, or a named map of graphs |
 
 All options are optional. The dashboard adapts to what's provided.
 
@@ -120,6 +131,8 @@ The middleware exposes these under its mount path:
 | `GET /api/realtime/room/:name` | Room members with metadata and presence |
 | `GET /api/realtime/record/:id` | Fetch a record's current value |
 | `GET /api/realtime/collection/:id/records` | Resolved records for a collection + connection |
+| `GET /api/cells/:graph` | All cells in the named graph with values, deps, status, metadata |
+| `GET /api/cells/:graph/:name/history` | Recent values for a cell (if history is enabled on it) |
 
 ## How It Works
 
