@@ -58,17 +58,9 @@ watch(
 const subsystemOptions = computed(() => [
   { value: 'queue', label: 'Queue', disabled: !props.config?.queue },
   { value: 'cron', label: 'Cron', disabled: !props.config?.cron },
-  {
-    value: 'limit',
-    label: props.config?.limit?.length ? `Limit (${props.config.limit.length})` : 'Limit',
-    disabled: !props.config?.limit?.length,
-  },
+  { value: 'limit', label: 'Limit', disabled: !props.config?.limit?.length },
   { value: 'workflow', label: 'Workflow', disabled: !props.config?.workflow },
-  {
-    value: 'cells',
-    label: props.config?.cells?.length ? `Cells (${props.config.cells.length})` : 'Cells',
-    disabled: !props.config?.cells?.length,
-  },
+  { value: 'cells', label: 'Cells', disabled: !props.config?.cells?.length },
 ])
 
 const today = computed(() =>
