@@ -306,6 +306,7 @@ async function submitRun() {
   border-color: var(--lavender);
   box-shadow: var(--shadow-soft);
 }
+.wf-card--active:hover { border-color: var(--lavender); }
 .wf-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .wf-card__name {
   font-family: var(--display);
