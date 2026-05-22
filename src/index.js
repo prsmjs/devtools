@@ -113,6 +113,18 @@ export function prsmDevtools(options = {}) {
       }))
       res.json({ jobs })
     })
+
+    router.post('/api/cron/:name/run', async (req, res) => {
+      if (typeof cron.run !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/cron version does not support manual runs' })
+      }
+      try {
+        const result = await cron.run(req.params.name)
+        res.json(result)
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
   }
 
   if (limit) {

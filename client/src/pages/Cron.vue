@@ -6,11 +6,14 @@ import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
 import Table from '../ui/components/Table.vue'
 import Badge from '../ui/components/Badge.vue'
+import Button from '../ui/components/Button.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
+import { toast } from '../ui/composables/toast.js'
 
 const jobs = ref([])
 const events = useSSE()
 const now = ref(Date.now())
+const running = ref(null)
 
 let pollTimer = null
 let tickTimer = null
@@ -50,6 +53,7 @@ const columns = [
   { key: 'name', label: 'Job', primary: true },
   { key: 'next', label: 'Next fire', align: 'right', mono: true },
   { key: 'in', label: 'In', align: 'right' },
+  { key: 'run', label: '', align: 'right' },
 ]
 
 function timeUntil(date) {
@@ -63,6 +67,29 @@ function timeUntil(date) {
 function isSoon(date) {
   const t = timeUntil(date)
   return t === 'now' || t === '<1s'
+}
+
+async function runJob(name) {
+  running.value = name
+  try {
+    const res = await fetch(api(`/cron/${encodeURIComponent(name)}/run`), { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      toast.error('Run failed', { description: data.error || 'The job could not be run.' })
+    } else if (data.ran === false) {
+      toast.warning('Job not run', {
+        description: data.reason === 'already running'
+          ? 'This exclusive job is already running.'
+          : data.reason || 'The job did not run.',
+      })
+    } else {
+      toast.success(`Triggered ${name}`, { description: 'See the events below for the result.' })
+    }
+  } catch (err) {
+    toast.error('Run failed', { description: err.message })
+  } finally {
+    running.value = null
+  }
 }
 </script>
 
@@ -82,6 +109,15 @@ function isSoon(date) {
               <span class="countdown" :class="{ 'countdown--soon': isSoon(row.nextFireTime) }">
                 {{ timeUntil(row.nextFireTime) }}
               </span>
+            </template>
+            <template #cell-run="{ row }">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="lucide:play"
+                :loading="running === row.name"
+                @click="runJob(row.name)"
+              >Run</Button>
             </template>
           </Table>
           <EmptyState v-else title="No cron jobs registered" description="Scheduled jobs will appear here once registered." />
