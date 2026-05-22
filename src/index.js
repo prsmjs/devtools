@@ -132,6 +132,21 @@ export function prsmDevtools(options = {}) {
       res.json({ limiters: Object.keys(limit) })
     })
 
+    router.get('/api/limits/:name/keys', async (req, res) => {
+      const limiter = limit[req.params.name]
+      if (!limiter) return res.status(404).json({ error: 'Limiter not found' })
+      if (!limiter.keys) {
+        return res.status(400).json({ error: 'This @prsm/limit version does not support key listing' })
+      }
+      try {
+        const n = req.query.limit ? Number(req.query.limit) : undefined
+        const keys = await limiter.keys(n ? { limit: n } : undefined)
+        res.json({ keys })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
     router.get('/api/limits/:name/peek/:key', async (req, res) => {
       const limiter = limit[req.params.name]
       if (!limiter) return res.status(404).json({ error: 'Limiter not found' })
