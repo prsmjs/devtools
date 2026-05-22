@@ -195,11 +195,6 @@ async function submitRun() {
               <span class="wf-card__name">{{ workflow.name }}</span>
               <Badge size="sm">v{{ workflow.version }}</Badge>
             </div>
-            <div class="wf-card__meta">
-              <span>{{ workflow.graph.nodes.length }} steps</span>
-              <span class="wf-card__dot" />
-              <span>starts at {{ workflow.graph.start }}</span>
-            </div>
           </button>
         </aside>
 
@@ -318,13 +313,6 @@ async function submitRun() {
   font-weight: 500;
   letter-spacing: -0.2px;
   color: var(--ink);
-}
-.wf-card__meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--ink-60);
 }
 .wf-card__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
 
