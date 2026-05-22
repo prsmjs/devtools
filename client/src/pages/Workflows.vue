@@ -8,6 +8,9 @@ import Panel from '../ui/components/Panel.vue'
 import PanelSection from '../ui/components/PanelSection.vue'
 import KeyValue from '../ui/components/KeyValue.vue'
 import Badge from '../ui/components/Badge.vue'
+import Button from '../ui/components/Button.vue'
+import Modal from '../ui/components/Modal.vue'
+import Textarea from '../ui/components/Textarea.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 
 const route = useRoute()
@@ -17,6 +20,11 @@ const workflows = ref([])
 const selectedKey = ref('')
 const selectedStep = ref('')
 const loadError = ref(null)
+
+const runOpen = ref(false)
+const runInput = ref('{}')
+const runError = ref(null)
+const running = ref(false)
 
 async function load() {
   const res = await fetch(api('/workflows'))
@@ -68,6 +76,48 @@ const nodeItems = computed(() => {
     { label: 'Retries', value: n.retry?.maxAttempts ?? 1 },
   ]
 })
+
+function openRun() {
+  runInput.value = '{}'
+  runError.value = null
+  runOpen.value = true
+}
+
+async function submitRun() {
+  if (!selectedWorkflow.value) return
+  let input
+  try {
+    input = runInput.value.trim() ? JSON.parse(runInput.value) : {}
+  } catch (err) {
+    runError.value = `Invalid JSON: ${err.message}`
+    return
+  }
+
+  running.value = true
+  runError.value = null
+  try {
+    const res = await fetch(api('/workflow/start'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: selectedWorkflow.value.name,
+        version: selectedWorkflow.value.version,
+        input,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      runError.value = data.error || 'Failed to start workflow.'
+      return
+    }
+    runOpen.value = false
+    router.push({ path: '/executions', query: { execution: data.id } })
+  } catch (err) {
+    runError.value = err.message
+  } finally {
+    running.value = false
+  }
+}
 </script>
 
 <template>
@@ -76,7 +126,13 @@ const nodeItems = computed(() => {
       eyebrow="Definitions"
       title="Workflows"
       subtitle="Registered workflow definitions and their step graphs."
-    />
+    >
+      <template #actions>
+        <Button variant="primary" icon="lucide:play" :disabled="!selectedWorkflow" @click="openRun">
+          Run workflow
+        </Button>
+      </template>
+    </PageHeader>
 
     <div class="page-body">
       <EmptyState
@@ -143,6 +199,30 @@ const nodeItems = computed(() => {
         </section>
       </div>
     </div>
+
+    <Modal v-model="runOpen" :title="`Run ${selectedWorkflow?.name ?? 'workflow'}`">
+      <div v-if="selectedWorkflow" class="run-modal">
+        <p class="run-modal__meta">
+          {{ selectedWorkflow.name }} · version {{ selectedWorkflow.version }}
+        </p>
+        <div class="run-modal__field">
+          <label class="run-modal__label">Input (JSON)</label>
+          <Textarea
+            v-model="runInput"
+            :rows="9"
+            :invalid="!!runError"
+            placeholder='{ "subject": "..." }'
+          />
+        </div>
+        <p v-if="runError" class="run-modal__error">{{ runError }}</p>
+      </div>
+      <template #footer="{ close }">
+        <Button variant="ghost" @click="close">Cancel</Button>
+        <Button variant="primary" :loading="running" loading-label="Starting" @click="submitRun">
+          Run workflow
+        </Button>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -217,5 +297,30 @@ const nodeItems = computed(() => {
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink-60);
+}
+
+.run-modal { display: flex; flex-direction: column; gap: 14px; }
+.run-modal__meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-60);
+}
+.run-modal__field { display: flex; flex-direction: column; gap: 6px; }
+.run-modal__label {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  color: var(--ink-60);
+}
+.run-modal__error {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--status-failed);
 }
 </style>

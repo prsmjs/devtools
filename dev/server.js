@@ -4,6 +4,7 @@ import Queue from '@prsm/queue'
 import { Cron } from '@prsm/cron'
 import { slidingWindow, tokenBucket } from '@prsm/limit'
 import { createGraph } from '@prsm/cells'
+import { mutex, semaphore } from '@prsm/lock'
 import WorkflowEngine, { defineWorkflow } from '@prsm/workflow'
 import { postgresDriver } from '@prsm/workflow/postgres'
 import { prsmDevtools } from '../src/index.js'
@@ -288,6 +289,56 @@ setInterval(async () => {
   }
 }, 6000)
 
+const jobLock = mutex({ redis: { host: '127.0.0.1', port: 6379 }, prefix: 'devtools-demo:mutex:' })
+const workerSlots = semaphore({
+  max: 6,
+  ttl: '40s',
+  redis: { host: '127.0.0.1', port: 6379 },
+  prefix: 'devtools-demo:sem:',
+})
+
+const JOB_KEYS = ['report-generation', 'nightly-data-sync', 'cache-rebuild', 'index-compaction', 'invoice-batch']
+const WORKERS = ['worker-alpha', 'worker-beta', 'worker-gamma', 'worker-delta']
+const heldJobs = new Map()
+
+async function jobLockTick() {
+  if (heldJobs.size && (heldJobs.size >= JOB_KEYS.length || Math.random() < 0.45)) {
+    const entries = [...heldJobs]
+    const [key, id] = entries[Math.floor(Math.random() * entries.length)]
+    await jobLock.release(key, id).catch(() => {})
+    heldJobs.delete(key)
+  } else {
+    const free = JOB_KEYS.filter((k) => !heldJobs.has(k))
+    if (free.length) {
+      const key = free[Math.floor(Math.random() * free.length)]
+      const holder = WORKERS[Math.floor(Math.random() * WORKERS.length)]
+      const { acquired, id } = await jobLock.acquire(key, { ttl: '5m', id: holder })
+      if (acquired) heldJobs.set(key, id)
+    }
+  }
+}
+
+const heldSlots = []
+
+async function slotTick() {
+  if (heldSlots.length && (heldSlots.length >= 6 || Math.random() < 0.4)) {
+    const id = heldSlots.shift()
+    await workerSlots.release('task-runners', id).catch(() => {})
+  } else {
+    const { acquired, id } = await workerSlots.acquire('task-runners')
+    if (acquired) heldSlots.push(id)
+  }
+}
+
+for (let i = 0; i < 3; i++) await jobLockTick()
+for (let i = 0; i < 3; i++) await slotTick()
+
+setInterval(() => { jobLockTick().catch(() => {}) }, 6000)
+setInterval(() => { slotTick().catch(() => {}) }, 5000)
+setInterval(() => {
+  for (const id of heldSlots) workerSlots.renew('task-runners', id).catch(() => {})
+}, 12000)
+
 app.use(
   '/devtools',
   prsmDevtools({
@@ -296,6 +347,7 @@ app.use(
     limit: { api: apiLimiter, uploads: uploadLimiter },
     cells: { portfolio: g, health },
     workflow,
+    lock: { jobs: jobLock, 'worker-slots': workerSlots },
   }),
 )
 

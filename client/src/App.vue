@@ -5,8 +5,9 @@ import { Icon } from '@iconify/vue'
 import { api } from './api.js'
 import AppLayout from './ui/components/AppLayout.vue'
 import SideNav from './ui/components/SideNav.vue'
+import Notifications from './ui/components/Notifications.vue'
 
-const config = ref({ queue: false, cron: false, limit: [], workflow: false, realtime: false, cells: [] })
+const config = ref({ queue: false, cron: false, limit: [], workflow: false, realtime: false, cells: [], lock: [] })
 const route = useRoute()
 const router = useRouter()
 
@@ -19,6 +20,7 @@ const navSections = computed(() => {
   const items = [{ key: '/', label: 'Overview', icon: 'lucide:layout-dashboard' }]
   if (config.value.realtime) items.push({ key: '/realtime', label: 'Realtime', icon: 'lucide:radio-tower' })
   if (config.value.cells?.length) items.push({ key: '/cells', label: 'Cells', icon: 'lucide:network' })
+  if (config.value.lock?.length) items.push({ key: '/locks', label: 'Locks', icon: 'lucide:lock' })
   if (config.value.queue) items.push({ key: '/queue', label: 'Queue', icon: 'lucide:layers' })
   if (config.value.cron) items.push({ key: '/cron', label: 'Cron', icon: 'lucide:clock' })
   if (config.value.limit?.length) items.push({ key: '/limits', label: 'Limits', icon: 'lucide:gauge' })
@@ -60,6 +62,7 @@ function onSelect(item) {
     </template>
     <router-view :config="config" />
   </AppLayout>
+  <Notifications position="bottom-right" />
 </template>
 
 <style scoped>

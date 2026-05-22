@@ -11,6 +11,7 @@ import WorkflowsPage from './pages/Workflows.vue'
 import WorkflowExecutionsPage from './pages/WorkflowExecutions.vue'
 import RealtimePage from './pages/Realtime.vue'
 import CellsPage from './pages/Cells.vue'
+import LocksPage from './pages/Locks.vue'
 import RoomsView from './pages/realtime/RoomsView.vue'
 import ChannelsView from './pages/realtime/ChannelsView.vue'
 import CollectionsView from './pages/realtime/CollectionsView.vue'
@@ -34,6 +35,7 @@ const router = createRouter({
       ],
     },
     { path: '/cells', component: CellsPage },
+    { path: '/locks', component: LocksPage },
     { path: '/queue', component: QueuePage },
     { path: '/cron', component: CronPage },
     { path: '/limits', component: LimitsPage },

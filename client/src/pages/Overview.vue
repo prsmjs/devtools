@@ -133,9 +133,9 @@ const filteredEvents = computed(() =>
 
 .filter-row {
   display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 .filter-row__label {
   font-family: var(--mono);

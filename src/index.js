@@ -1,4 +1,4 @@
-import { Router, static as serveStatic } from 'express'
+import { Router, static as serveStatic, json } from 'express'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
@@ -29,9 +29,10 @@ function patternToString(p) {
  */
 export function prsmDevtools(options = {}) {
   const router = Router()
-  const { queue, cron, limit, workflow, realtime } = options
+  const { queue, cron, limit, workflow, realtime, lock } = options
   const cellGraphs = normalizeCellGraphs(options.cells)
   const sseClients = new Set()
+  const jsonBody = json()
 
   function broadcast(event, data) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
@@ -84,6 +85,7 @@ export function prsmDevtools(options = {}) {
       workflow: !!workflow,
       realtime: !!realtime,
       cells: cellGraphs ? Object.keys(cellGraphs) : [],
+      lock: lock ? Object.keys(lock) : [],
     })
   })
 
@@ -171,6 +173,47 @@ export function prsmDevtools(options = {}) {
       const execution = await workflow.getExecution(req.params.id)
       if (!execution) return res.status(404).json({ error: 'Execution not found' })
       res.json({ execution })
+    })
+
+    router.post('/api/workflow/start', jsonBody, async (req, res) => {
+      const { name, version, input } = req.body || {}
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ error: 'name is required' })
+      }
+      try {
+        const execution = await workflow.start(name, input ?? {}, version ? { version } : undefined)
+        res.json({ id: execution.id })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/workflow/executions/:id/signal', jsonBody, async (req, res) => {
+      try {
+        const execution = await workflow.signal(req.params.id, req.body?.payload ?? {})
+        res.json({ execution })
+      } catch (err) {
+        const status = err.name === 'AlreadySignaledError' ? 409 : 400
+        res.status(status).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/workflow/executions/:id/cancel', jsonBody, async (req, res) => {
+      try {
+        const execution = await workflow.cancel(req.params.id, req.body?.reason)
+        res.json({ execution })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/workflow/executions/:id/resume', async (req, res) => {
+      try {
+        const execution = await workflow.resume(req.params.id)
+        res.json({ execution })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
     })
   }
 
@@ -372,6 +415,33 @@ export function prsmDevtools(options = {}) {
       try {
         const entries = g.history(req.params.name, limit)
         res.json({ graph: req.params.graph, name: req.params.name, entries })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+  }
+
+  if (lock) {
+    router.get('/api/locks/:name', async (req, res) => {
+      const manager = lock[req.params.name]
+      if (!manager) return res.status(404).json({ error: 'Lock manager not found' })
+      try {
+        const kind = typeof manager.renew === 'function' ? 'semaphore' : 'mutex'
+        const locks = await manager.list()
+        res.json({ name: req.params.name, kind, locks })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/locks/:name/release', jsonBody, async (req, res) => {
+      const manager = lock[req.params.name]
+      if (!manager) return res.status(404).json({ error: 'Lock manager not found' })
+      const { key, id } = req.body || {}
+      if (!key || !id) return res.status(400).json({ error: 'key and id are required' })
+      try {
+        const released = await manager.release(key, id)
+        res.json({ released })
       } catch (err) {
         res.status(500).json({ error: err.message })
       }
