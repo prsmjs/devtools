@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import Button from '../ui/components/Button.vue'
 
 const props = defineProps({
   graph: { type: Object, required: true },
@@ -220,8 +221,13 @@ function edgeClass(edge) {
     @pointerup="onPointerUp"
   >
     <div class="graph-controls">
-      <button @click.stop="resetView" title="Reset view">1:1</button>
-      <button @click.stop="toggleFullscreen" title="Fullscreen">{{ fullscreen ? 'Exit' : 'Expand' }}</button>
+      <Button size="sm" variant="ghost" @click.stop="resetView">1:1</Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        :icon="fullscreen ? 'lucide:minimize-2' : 'lucide:maximize-2'"
+        @click.stop="toggleFullscreen"
+      >{{ fullscreen ? 'Exit' : 'Expand' }}</Button>
     </div>
     <svg
       :viewBox="`0 0 ${layout.width} ${layout.height}`"
@@ -325,24 +331,12 @@ function edgeClass(edge) {
   display: flex;
   gap: 6px;
 }
-
-.graph-controls button {
-  padding: 5px 12px;
+/* opaque backing so the ghost buttons stay readable over graph content */
+.graph-controls :deep(.pc-btn) {
   background: var(--paper);
-  border: 1px solid var(--ink-08);
-  border-radius: var(--radius-sharp);
-  color: var(--ink-60);
-  font-family: var(--display);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
-
-.graph-controls button:hover {
+.graph-controls :deep(.pc-btn:hover:not(:disabled)) {
   background: var(--ink-04);
-  color: var(--ink);
-  border-color: var(--ink-20);
 }
 
 .graph {
