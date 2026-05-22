@@ -220,7 +220,7 @@ function edgeClass(edge) {
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
   >
-    <div class="graph-controls">
+    <div class="graph-controls" @pointerdown.stop @wheel.stop>
       <Button size="sm" variant="ghost" @click.stop="resetView">1:1</Button>
       <Button
         size="sm"
