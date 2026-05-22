@@ -140,23 +140,42 @@ function buildLayout(graph) {
   }
 
   const positions = new Map(positioned.map((node) => [node.name, node]))
-  const lines = edges
-    .map((edge) => {
+
+  // group edges sharing the same from->to pair so parallel edges (e.g. a
+  // subworkflow's succeeded/failed/canceled routes) can be fanned apart
+  const groups = new Map()
+  for (const edge of edges) {
+    const k = `${edge.from}->${edge.to}`
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(edge)
+  }
+
+  const SPREAD = 26
+  const lines = []
+  for (const group of groups.values()) {
+    group.forEach((edge, i) => {
       const from = positions.get(edge.from)
       const to = positions.get(edge.to)
-      if (!from || !to) return null
+      if (!from || !to) return
 
-      return {
+      const x1 = from.x + from.width
+      const y1 = from.y + from.height / 2
+      const x2 = to.x
+      const y2 = to.y + to.height / 2
+      const offset = (i - (group.length - 1) / 2) * SPREAD
+      const cx = (x1 + x2) / 2
+      // bow the curve by ~1.6x the offset so each parallel edge separates clearly
+      const cpy1 = y1 + offset * 1.6
+      const cpy2 = y2 + offset * 1.6
+
+      lines.push({
         ...edge,
-        x1: from.x + from.width,
-        y1: from.y + from.height / 2,
-        x2: to.x,
-        y2: to.y + to.height / 2,
-        mx: (from.x + from.width + to.x) / 2,
-        my: (from.y + from.height / 2 + to.y + to.height / 2) / 2,
-      }
+        d: `M ${x1} ${y1} C ${cx} ${cpy1}, ${cx} ${cpy2}, ${x2} ${y2}`,
+        labelX: cx,
+        labelY: (y1 + y2) / 2 + offset - 7,
+      })
     })
-    .filter(Boolean)
+  }
 
   return {
     nodes: positioned,
@@ -213,14 +232,14 @@ function edgeClass(edge) {
         <path
           v-for="edge in layout.edges"
           :key="`${edge.from}:${edge.to}:${edge.label}`"
-          :d="`M ${edge.x1} ${edge.y1} C ${(edge.x1 + edge.x2) / 2} ${edge.y1}, ${(edge.x1 + edge.x2) / 2} ${edge.y2}, ${edge.x2} ${edge.y2}`"
+          :d="edge.d"
           :class="edgeClass(edge)"
         />
         <text
           v-for="edge in layout.edges"
           :key="`${edge.from}:${edge.to}:${edge.label}:label`"
-          :x="edge.mx"
-          :y="edge.my - 8"
+          :x="edge.labelX"
+          :y="edge.labelY"
           class="edge-label"
           text-anchor="middle"
         >

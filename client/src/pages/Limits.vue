@@ -95,7 +95,7 @@ async function resetKey() {
               <Button type="submit" variant="primary" :disabled="!peekKey">Peek</Button>
               <Button
                 type="button"
-                variant="danger"
+                variant="ghost"
                 :disabled="!peekKey"
                 :loading="resetting"
                 loading-label="Resetting"
