@@ -11,6 +11,7 @@ import Badge from '../ui/components/Badge.vue'
 import Button from '../ui/components/Button.vue'
 import Modal from '../ui/components/Modal.vue'
 import Textarea from '../ui/components/Textarea.vue'
+import Breadcrumbs from '../ui/components/Breadcrumbs.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 
 const route = useRoute()
@@ -20,6 +21,7 @@ const workflows = ref([])
 const selectedKey = ref('')
 const selectedStep = ref('')
 const loadError = ref(null)
+const trail = ref([])
 
 const runOpen = ref(false)
 const runInput = ref('{}')
@@ -76,6 +78,39 @@ const nodeItems = computed(() => {
     { label: 'Retries', value: n.retry?.maxAttempts ?? 1 },
   ]
 })
+
+function workflowName(key) {
+  return workflows.value.find((w) => `${w.name}@${w.version}` === key)?.name ?? key
+}
+
+const childKey = computed(() => {
+  const n = selectedNode.value
+  if (!n || n.type !== 'subworkflow' || !n.workflow) return null
+  const exact = `${n.workflow}@${n.version}`
+  if (workflows.value.some((w) => `${w.name}@${w.version}` === exact)) return exact
+  const byName = workflows.value.find((w) => w.name === n.workflow)
+  return byName ? `${byName.name}@${byName.version}` : null
+})
+
+function selectWorkflow(key) {
+  trail.value = []
+  selectedKey.value = key
+}
+
+function drillIn() {
+  if (!childKey.value) return
+  trail.value = [...trail.value, selectedKey.value]
+  selectedKey.value = childKey.value
+}
+
+const crumbs = computed(() =>
+  [...trail.value, selectedKey.value].map((key, i) => ({ label: workflowName(key), key, index: i }))
+)
+
+function onCrumb(item) {
+  trail.value = trail.value.slice(0, item.index)
+  selectedKey.value = item.key
+}
 
 function openRun() {
   runInput.value = '{}'
@@ -154,7 +189,7 @@ async function submitRun() {
             type="button"
             class="wf-card"
             :class="{ 'wf-card--active': `${workflow.name}@${workflow.version}` === selectedKey }"
-            @click="selectedKey = `${workflow.name}@${workflow.version}`"
+            @click="selectWorkflow(`${workflow.name}@${workflow.version}`)"
           >
             <div class="wf-card__head">
               <span class="wf-card__name">{{ workflow.name }}</span>
@@ -169,6 +204,12 @@ async function submitRun() {
         </aside>
 
         <section v-if="selectedWorkflow" class="wf-detail">
+          <Breadcrumbs
+            v-if="trail.length"
+            :items="crumbs"
+            separator="›"
+            @select="onCrumb"
+          />
           <Panel gradient elevated>
             <template #header>
               <h2 class="wf-title">{{ selectedWorkflow.name }}</h2>
@@ -194,6 +235,21 @@ async function submitRun() {
             <PanelSection label="Step definition">
               <KeyValue layout="divided" boxed :items="nodeItems" />
               <p v-if="selectedNode.description" class="wf-node-desc">{{ selectedNode.description }}</p>
+            </PanelSection>
+            <PanelSection v-if="selectedNode.type === 'subworkflow'" label="Subworkflow">
+              <div class="wf-sub-row">
+                <span class="wf-sub-target">
+                  {{ selectedNode.workflow }}<span v-if="selectedNode.version"> · v{{ selectedNode.version }}</span>
+                </span>
+                <Button
+                  v-if="childKey"
+                  size="sm"
+                  variant="ghost"
+                  icon="lucide:corner-down-right"
+                  @click="drillIn"
+                >Open workflow</Button>
+                <span v-else class="wf-sub-missing">not registered</span>
+              </div>
             </PanelSection>
           </Panel>
         </section>
@@ -297,6 +353,24 @@ async function submitRun() {
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink-60);
+}
+.wf-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wf-sub-target {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+.wf-sub-missing {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-40);
 }
 
 .run-modal { display: flex; flex-direction: column; gap: 14px; }

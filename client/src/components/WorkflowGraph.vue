@@ -258,7 +258,15 @@ function edgeClass(edge) {
         <text :x="node.x + 16" :y="node.y + 28" class="node-name">{{ node.label || node.name }}</text>
         <text :x="node.x + 16" :y="node.y + 50" class="node-type">{{ node.type }}</text>
         <text
-          v-if="stepState(node.name)?.attempts"
+          v-if="node.type === 'subworkflow' && node.workflow"
+          :x="node.x + 16"
+          :y="node.y + 72"
+          class="node-meta node-meta--sub"
+        >
+          ↳ {{ node.workflow }}
+        </text>
+        <text
+          v-else-if="stepState(node.name)?.attempts"
           :x="node.x + 16"
           :y="node.y + 72"
           class="node-meta"
@@ -423,5 +431,9 @@ function edgeClass(edge) {
   fill: var(--ink-40);
   font-family: var(--mono);
   font-size: 10px;
+}
+.node-meta--sub {
+  fill: var(--status-paused);
+  font-weight: 500;
 }
 </style>

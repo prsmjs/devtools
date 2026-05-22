@@ -16,6 +16,7 @@ import Modal from '../ui/components/Modal.vue'
 import Textarea from '../ui/components/Textarea.vue'
 import Callout from '../ui/components/Callout.vue'
 import ScrollArea from '../ui/components/ScrollArea.vue'
+import Breadcrumbs from '../ui/components/Breadcrumbs.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import { toast } from '../ui/composables/toast.js'
 
@@ -38,6 +39,7 @@ const signalPayload = ref('{}')
 const signalError = ref(null)
 const signaling = ref(false)
 const busy = ref(false)
+const trail = ref([])
 
 let pollTimer = null
 let tickTimer = null
@@ -65,7 +67,12 @@ async function loadExecutions() {
     selectedId.value = executions.value[0].id
   }
 
-  if (selectedId.value && !executions.value.some((execution) => execution.id === selectedId.value)) {
+  // don't auto-reselect while drilled into a child execution that isn't in the list
+  if (
+    !trail.value.length &&
+    selectedId.value &&
+    !executions.value.some((execution) => execution.id === selectedId.value)
+  ) {
     selectedId.value = executions.value[0]?.id ?? ''
   }
 }
@@ -161,6 +168,31 @@ watch([selectedExecution, selectedWorkflow], ([execution, workflow]) => {
 const selectedStepState = computed(() =>
   selectedExecution.value?.steps?.[selectedStep.value] ?? null
 )
+
+const childExecutionId = computed(() => selectedStepState.value?.childExecutionId ?? null)
+
+function selectExecution(id) {
+  trail.value = []
+  selectedId.value = id
+}
+
+function drillIntoChild() {
+  if (!childExecutionId.value || !selectedExecution.value) return
+  trail.value = [...trail.value, { id: selectedId.value, label: selectedExecution.value.workflow }]
+  selectedStep.value = ''
+  selectedId.value = childExecutionId.value
+}
+
+const crumbs = computed(() => {
+  const current = { label: selectedExecution.value?.workflow ?? 'execution', id: selectedId.value }
+  return [...trail.value, current].map((c, i) => ({ label: c.label, id: c.id, index: i }))
+})
+
+function onCrumb(item) {
+  trail.value = trail.value.slice(0, item.index)
+  selectedStep.value = ''
+  selectedId.value = item.id
+}
 
 const timeline = computed(() =>
   (selectedExecution.value?.journal ?? []).slice().sort((a, b) => b.at - a.at)
@@ -341,7 +373,7 @@ async function doAction(path, label, doneLabel) {
                 type="button"
                 class="exec-row"
                 :class="{ 'exec-row--active': execution.id === selectedId }"
-                @click="selectedId = execution.id"
+                @click="selectExecution(execution.id)"
               >
                 <div class="exec-row__top">
                   <span class="exec-row__name">{{ execution.workflow }}</span>
@@ -359,6 +391,12 @@ async function doAction(path, label, doneLabel) {
         </aside>
 
         <section v-if="selectedExecution && selectedWorkflow" class="exec-center">
+          <Breadcrumbs
+            v-if="trail.length"
+            :items="crumbs"
+            separator="›"
+            @select="onCrumb"
+          />
           <Panel gradient elevated>
             <template #header>
               <h2 class="exec-title">{{ selectedExecution.workflow }}</h2>
@@ -414,6 +452,14 @@ async function doAction(path, label, doneLabel) {
             </PanelSection>
             <PanelSection>
               <KeyValue layout="divided" boxed compact :items="stepItems" />
+            </PanelSection>
+            <PanelSection v-if="childExecutionId" label="Subworkflow">
+              <div class="exec-sub-row">
+                <span class="exec-sub-id">{{ childExecutionId.slice(0, 8) }}</span>
+                <Button size="sm" variant="ghost" icon="lucide:corner-down-right" @click="drillIntoChild">
+                  Open child execution
+                </Button>
+              </div>
             </PanelSection>
             <PanelSection
               v-if="selectedStepState.output != null && selectedStepState.output !== selectedStepState.route"
@@ -541,6 +587,18 @@ async function doAction(path, label, doneLabel) {
 .exec-wait { margin: 16px 24px 4px; }
 
 .exec-inspector { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.exec-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.exec-sub-id {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-60);
+}
 
 .timeline { max-height: 420px; overflow-y: auto; }
 .timeline__row {
