@@ -11,12 +11,14 @@ import Select from '../ui/components/Select.vue'
 import Button from '../ui/components/Button.vue'
 import Callout from '../ui/components/Callout.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
+import { toast } from '../ui/composables/toast.js'
 
 const limiters = ref([])
 const peekName = ref('')
 const peekKey = ref('')
 const peekResult = ref(null)
 const peekError = ref(null)
+const resetting = ref(false)
 
 onMounted(async () => {
   const res = await fetch(api('/limits'))
@@ -38,6 +40,28 @@ async function peek() {
   } else {
     const data = await res.json()
     peekError.value = data.error
+  }
+}
+
+async function resetKey() {
+  if (!peekName.value || !peekKey.value) return
+  resetting.value = true
+  try {
+    const res = await fetch(
+      api(`/limits/${peekName.value}/reset/${encodeURIComponent(peekKey.value)}`),
+      { method: 'POST' },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      toast.error('Reset failed', { description: data.error || 'The key could not be reset.' })
+    } else {
+      toast.success('Key reset', { description: `"${peekKey.value}" cleared on limiter "${peekName.value}".` })
+      await peek()
+    }
+  } catch (err) {
+    toast.error('Reset failed', { description: err.message })
+  } finally {
+    resetting.value = false
   }
 }
 </script>
@@ -69,6 +93,14 @@ async function peek() {
               <Select v-model="peekName" :options="limiters" />
               <Input v-model="peekKey" placeholder="Key to inspect" class="peek-form__key" />
               <Button type="submit" variant="primary" :disabled="!peekKey">Peek</Button>
+              <Button
+                type="button"
+                variant="danger"
+                :disabled="!peekKey"
+                :loading="resetting"
+                loading-label="Resetting"
+                @click="resetKey"
+              >Reset</Button>
             </form>
 
             <div v-if="peekResult" class="peek-result">

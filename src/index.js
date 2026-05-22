@@ -144,6 +144,19 @@ export function prsmDevtools(options = {}) {
         res.status(500).json({ error: err.message })
       }
     })
+
+    router.post('/api/limits/:name/reset/:key', async (req, res) => {
+      const limiter = limit[req.params.name]
+      if (!limiter) return res.status(404).json({ error: 'Limiter not found' })
+      if (!limiter.reset) return res.status(400).json({ error: 'Limiter does not support reset' })
+
+      try {
+        await limiter.reset(req.params.key)
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
   }
 
   if (workflow) {
