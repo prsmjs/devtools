@@ -447,6 +447,19 @@ export function prsmDevtools(options = {}) {
   }
 
   if (lock) {
+    router.get('/api/locks', async (_req, res) => {
+      const managers = []
+      for (const [name, manager] of Object.entries(lock)) {
+        const kind = typeof manager.renew === 'function' ? 'semaphore' : 'mutex'
+        try {
+          managers.push({ name, kind, locks: await manager.list() })
+        } catch (err) {
+          managers.push({ name, kind, locks: [], error: err.message })
+        }
+      }
+      res.json({ managers })
+    })
+
     router.get('/api/locks/:name', async (req, res) => {
       const manager = lock[req.params.name]
       if (!manager) return res.status(404).json({ error: 'Lock manager not found' })
