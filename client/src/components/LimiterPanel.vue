@@ -93,7 +93,7 @@ async function resetKey(key) {
       <h3 class="lp-title">{{ name }}</h3>
     </template>
 
-    <PanelSection label="Recent keys" flush>
+    <PanelSection label="Recent keys">
       <ScrollArea v-if="recentKeys.length" max-height="280px">
         <div v-for="entry in recentKeys" :key="entry.key" class="lp-row">
           <span class="lp-row__key" :title="entry.key">{{ entry.key }}</span>
@@ -146,7 +146,7 @@ async function resetKey(key) {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 24px;
+  padding: 9px 0;
   border-top: 1px solid var(--ink-08);
 }
 .lp-row:first-child { border-top: 0; }
@@ -169,7 +169,6 @@ async function resetKey(key) {
 
 .lp-empty {
   margin: 0;
-  padding: 18px 24px;
   font-size: 13px;
   color: var(--ink-40);
 }
