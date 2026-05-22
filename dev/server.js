@@ -255,8 +255,8 @@ const ticketWorkflow = defineWorkflow({
       }),
     },
     reject: {
-      type: 'fail',
-      result: ({ data }) => ({ name: 'SpamRejected', message: `Rejected: ${data.subject}` }),
+      type: 'succeed',
+      result: ({ data }) => ({ outcome: 'rejected', subject: data.subject }),
     },
   },
 })
