@@ -2,6 +2,15 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../api.js'
 import JsonView from '../components/JsonView.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import PanelSection from '../ui/components/PanelSection.vue'
+import Badge from '../ui/components/Badge.vue'
+import Input from '../ui/components/Input.vue'
+import Select from '../ui/components/Select.vue'
+import Button from '../ui/components/Button.vue'
+import Callout from '../ui/components/Callout.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
 
 const limiters = ref([])
 const peekName = ref('')
@@ -35,47 +44,65 @@ async function peek() {
 
 <template>
   <div>
-    <div class="section-title">registered limiters</div>
-    <div class="limiter-list" v-if="limiters.length">
-      <div v-for="name in limiters" :key="name" class="tag accent" style="padding: 6px 14px; font-size: 11px;">{{ name }}</div>
+    <PageHeader
+      eyebrow="Rate limiting"
+      title="Limits"
+      subtitle="Registered limiters, and a peek tool to inspect any key's current state without consuming it."
+    />
+
+    <div class="page-body">
+      <section class="page-section">
+        <Panel title="Registered limiters">
+          <PanelSection>
+            <div v-if="limiters.length" class="limiter-list">
+              <Badge v-for="name in limiters" :key="name" variant="solid" size="md">{{ name }}</Badge>
+            </div>
+            <EmptyState v-else title="No limiters registered" description="Named limiters will appear here once registered." />
+          </PanelSection>
+        </Panel>
+      </section>
+
+      <section v-if="limiters.length" class="page-section">
+        <Panel title="Peek" description="Inspect a key's remaining budget without consuming any of it.">
+          <PanelSection>
+            <form class="peek-form" @submit.prevent="peek">
+              <Select v-model="peekName" :options="limiters" />
+              <Input v-model="peekKey" placeholder="Key to inspect" class="peek-form__key" />
+              <Button type="submit" variant="primary" :disabled="!peekKey">Peek</Button>
+            </form>
+
+            <div v-if="peekResult" class="peek-result">
+              <JsonView :data="peekResult" />
+            </div>
+            <Callout v-if="peekError" variant="danger" title="Peek failed" class="peek-error">
+              {{ peekError }}
+            </Callout>
+          </PanelSection>
+        </Panel>
+      </section>
     </div>
-    <p v-else class="empty" style="text-align: left; padding: 0;">no limiters registered</p>
-
-    <section v-if="limiters.length">
-      <div class="section-title">peek</div>
-      <p class="desc">inspect a key without consuming</p>
-      <form @submit.prevent="peek" class="peek-form">
-        <select v-model="peekName" class="select">
-          <option v-for="name in limiters" :key="name" :value="name">{{ name }}</option>
-        </select>
-        <input v-model="peekKey" placeholder="key" class="input" />
-        <button type="submit" :disabled="!peekKey" class="btn">peek</button>
-      </form>
-
-      <div v-if="peekResult" class="card" style="margin-top: 12px;">
-        <div class="card-body">
-          <JsonView :data="peekResult" />
-        </div>
-      </div>
-      <p v-if="peekError" class="error">{{ peekError }}</p>
-    </section>
   </div>
 </template>
 
 <style scoped>
-.limiter-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.limiter-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
-section { margin-top: 24px; }
+.peek-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.peek-form__key { flex: 1; min-width: 0; }
 
-.desc { font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
-
-.peek-form { display: flex; gap: 8px; }
-.input { padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--text); flex: 1; font-family: inherit; outline: none; }
-.input::placeholder { color: #333; }
-.input:focus { border-color: var(--accent); }
-.btn { padding: 6px 16px; background: var(--bg-raised); color: #999; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 11px; font-family: inherit; }
-.btn:hover { color: var(--text); }
-.btn:disabled { opacity: 0.3; cursor: default; }
-
-.error { margin-top: 10px; color: var(--color-red); font-size: 11px; }
+.peek-result {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--ink-04);
+  border-radius: var(--radius-comfy);
+}
+.peek-error { margin-top: 16px; }
 </style>

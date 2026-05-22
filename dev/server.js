@@ -4,6 +4,8 @@ import Queue from '@prsm/queue'
 import { Cron } from '@prsm/cron'
 import { slidingWindow, tokenBucket } from '@prsm/limit'
 import { createGraph } from '@prsm/cells'
+import WorkflowEngine, { defineWorkflow } from '@prsm/workflow'
+import { postgresDriver } from '@prsm/workflow/postgres'
 import { prsmDevtools } from '../src/index.js'
 
 const app = express()
@@ -140,6 +142,152 @@ setInterval(() => {
   health.set('queue-depth', Math.max(0, health.value('queue-depth') + Math.round((Math.random() - 0.4) * 50)))
 }, 4000)
 
+const delay = (ms) => new Promise((r) => setTimeout(r, ms))
+
+const enrichWorkflow = defineWorkflow({
+  name: 'enrich-customer',
+  version: '1',
+  start: 'lookup',
+  steps: {
+    lookup: {
+      type: 'activity',
+      next: 'score',
+      retry: { maxAttempts: 2, backoff: '2s' },
+      run: async () => {
+        await delay(300 + Math.random() * 500)
+        return { tier: ['free', 'pro', 'enterprise'][Math.floor(Math.random() * 3)] }
+      },
+    },
+    score: {
+      type: 'activity',
+      next: 'done',
+      run: async ({ steps }) => {
+        await delay(200 + Math.random() * 400)
+        return { tier: steps.lookup.output.tier, score: Math.floor(Math.random() * 100) }
+      },
+    },
+    done: {
+      type: 'succeed',
+      result: ({ steps }) => ({ tier: steps.score.output.tier, score: steps.score.output.score }),
+    },
+  },
+})
+
+const TICKET_SUBJECTS = [
+  'Cannot log in after password reset',
+  'Billing charged twice this month',
+  'Feature request: dark mode',
+  'API returning 500 on /orders',
+  'How do I export my data?',
+  'WIN A FREE IPHONE CLICK NOW',
+  'Webhook deliveries are delayed',
+  'Upgrade my plan to enterprise',
+]
+
+const ticketWorkflow = defineWorkflow({
+  name: 'ticket-triage',
+  version: '1',
+  start: 'classify',
+  steps: {
+    classify: {
+      type: 'activity',
+      next: 'route',
+      timeout: '20s',
+      retry: { maxAttempts: 3, backoff: '2s' },
+      run: async ({ input }) => {
+        await delay(400 + Math.random() * 700)
+        if (Math.random() < 0.12) throw new Error('classifier service timeout')
+        const roll = Math.random()
+        const priority = roll < 0.3 ? 'urgent' : roll < 0.45 ? 'spam' : 'normal'
+        return { priority, subject: input.subject }
+      },
+    },
+    route: {
+      type: 'decision',
+      transitions: { urgent: 'enrich', normal: 'autoReply', spam: 'reject' },
+      decide: ({ data }) => data.priority,
+    },
+    enrich: {
+      type: 'subworkflow',
+      workflow: 'enrich-customer',
+      version: '1',
+      input: ({ data }) => ({ subject: data.subject }),
+      transitions: { succeeded: 'assign', failed: 'assign', canceled: 'assign' },
+    },
+    assign: {
+      type: 'activity',
+      next: 'awaitResolution',
+      retry: { maxAttempts: 2, backoff: '2s' },
+      run: async () => {
+        await delay(300 + Math.random() * 500)
+        return { assignedTo: ['amara', 'devon', 'priya'][Math.floor(Math.random() * 3)] }
+      },
+    },
+    awaitResolution: {
+      type: 'wait',
+      timeout: '14s',
+      transitions: { resolved: 'close', timeout: 'escalate' },
+      resolve: ({ signal }) => signal.route,
+    },
+    escalate: {
+      type: 'activity',
+      next: 'close',
+      run: async () => {
+        await delay(300)
+        return { escalatedTo: 'tier-2' }
+      },
+    },
+    autoReply: {
+      type: 'activity',
+      next: 'close',
+      run: async ({ data }) => {
+        await delay(300 + Math.random() * 400)
+        return { reply: `Auto-acknowledged: ${data.subject}` }
+      },
+    },
+    close: {
+      type: 'succeed',
+      result: ({ data, steps }) => ({
+        priority: data.priority,
+        subject: data.subject,
+        assignedTo: steps.assign?.output?.assignedTo ?? null,
+      }),
+    },
+    reject: {
+      type: 'fail',
+      result: ({ data }) => ({ name: 'SpamRejected', message: `Rejected: ${data.subject}` }),
+    },
+  },
+})
+
+const workflow = new WorkflowEngine({
+  storage: postgresDriver({
+    connectionString: 'postgres://devtools:devtools_password@localhost:5544/devtools',
+  }),
+  owner: 'devtools-dev',
+  leaseMs: '30s',
+})
+workflow.register(enrichWorkflow)
+workflow.register(ticketWorkflow)
+
+setInterval(() => {
+  const subject = TICKET_SUBJECTS[Math.floor(Math.random() * TICKET_SUBJECTS.length)]
+  workflow.start('ticket-triage', { subject }).catch(() => {})
+}, 5000)
+
+setInterval(async () => {
+  try {
+    const suspended = await workflow.listExecutions({ status: 'suspended' })
+    for (const exec of suspended) {
+      if (exec.workflow === 'ticket-triage' && exec.currentStep === 'awaitResolution' && Math.random() < 0.6) {
+        await workflow.signal(exec.id, { route: 'resolved' }).catch(() => {})
+      }
+    }
+  } catch {
+    // postgres not ready yet
+  }
+}, 6000)
+
 app.use(
   '/devtools',
   prsmDevtools({
@@ -147,6 +295,7 @@ app.use(
     cron,
     limit: { api: apiLimiter, uploads: uploadLimiter },
     cells: { portfolio: g, health },
+    workflow,
   }),
 )
 
@@ -182,6 +331,7 @@ const port = 3000
 
 await queue.ready()
 await cron.start()
+await workflow.startWorker({ interval: '200ms' })
 
 app.listen(port, () => console.log(`devtools dev server on :${port}`))
 

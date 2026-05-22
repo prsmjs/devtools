@@ -5,6 +5,13 @@ import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import JsonView from '../components/JsonView.vue'
 import WorkflowGraph from '../components/WorkflowGraph.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import PanelSection from '../ui/components/PanelSection.vue'
+import KeyValue from '../ui/components/KeyValue.vue'
+import Select from '../ui/components/Select.vue'
+import Badge from '../ui/components/Badge.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -64,7 +71,7 @@ async function loadExecution(id) {
 }
 
 function formatRelative(ts) {
-  if (!ts) return '-'
+  if (!ts) return '—'
   const ms = Date.now() - ts
   if (ms < 1000) return 'now'
   if (ms < 60000) return `${Math.floor(ms / 1000)}s ago`
@@ -142,159 +149,267 @@ const timeline = computed(() =>
   (selectedExecution.value?.journal ?? []).slice().sort((a, b) => b.at - a.at)
 )
 
-const filteredWorkflows = computed(() => workflows.value.map((workflow) => workflow.name))
+const workflowOptions = computed(() => [
+  { value: '', label: 'All workflows' },
+  ...workflows.value.map((w) => ({ value: w.name, label: w.name })),
+])
+
+const statusOptions = [
+  { value: '', label: 'All statuses' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'waiting', label: 'Waiting' },
+  { value: 'running', label: 'Running' },
+  { value: 'succeeded', label: 'Succeeded' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'canceled', label: 'Canceled' },
+]
+
+function statusVariant(status) {
+  switch (status) {
+    case 'running': return 'paused'
+    case 'succeeded': return 'active'
+    case 'failed': return 'failed'
+    case 'canceled': return 'draft'
+    case 'waiting': return 'warning'
+    default: return 'default'
+  }
+}
+
+const executionItems = computed(() => {
+  const e = selectedExecution.value
+  if (!e) return []
+  return [
+    { label: 'Status', value: e.status },
+    { label: 'Current step', value: e.currentStep || 'terminal' },
+    { label: 'Created', value: new Date(e.createdAt).toLocaleString() },
+    { label: 'Updated', value: new Date(e.updatedAt).toLocaleString() },
+  ]
+})
+
+const stepItems = computed(() => {
+  const s = selectedStepState.value
+  if (!s) return []
+  const items = [
+    { label: 'Status', value: s.status },
+    { label: 'Attempts', value: s.attempts },
+  ]
+  if (s.route) items.push({ label: 'Route', value: s.route })
+  if (s.startedAt) items.push({ label: 'Started', value: new Date(s.startedAt).toLocaleTimeString() })
+  if (s.endedAt) items.push({ label: 'Ended', value: new Date(s.endedAt).toLocaleTimeString() })
+  return items
+})
 </script>
 
 <template>
   <div>
-    <div class="section-title">workflow executions</div>
+    <PageHeader
+      eyebrow="Runs"
+      title="Executions"
+      subtitle="Live and historical workflow runs, with per-step state and a journal timeline."
+    >
+      <template #actions>
+        <Select v-model="workflowFilter" :options="workflowOptions" />
+        <Select v-model="statusFilter" :options="statusOptions" />
+      </template>
+    </PageHeader>
 
-    <div class="filters">
-      <select v-model="workflowFilter" class="select">
-        <option value="">all workflows</option>
-        <option v-for="name in filteredWorkflows" :key="name" :value="name">{{ name }}</option>
-      </select>
-      <select v-model="statusFilter" class="select">
-        <option value="">all statuses</option>
-        <option value="queued">queued</option>
-        <option value="waiting">waiting</option>
-        <option value="running">running</option>
-        <option value="succeeded">succeeded</option>
-        <option value="failed">failed</option>
-        <option value="canceled">canceled</option>
-      </select>
-    </div>
-
-    <div v-if="selectedExecution" class="headline">
-      <div class="headline-name">{{ selectedExecution.workflow }}</div>
-      <div class="headline-sub">{{ selectedExecution.status }} - {{ selectedExecution.id }}</div>
-    </div>
-
-    <div class="execution-layout">
-      <aside class="list">
-        <div
-          v-for="execution in executions"
-          :key="execution.id"
-          class="execution-row"
-          :class="[execution.status, { active: execution.id === selectedId }]"
-          @click="selectedId = execution.id"
-        >
-          <div class="execution-main">
-            <span class="execution-workflow">{{ execution.workflow }}</span>
-            <span class="execution-id">{{ shortId(execution.id) }}</span>
-          </div>
-          <div class="execution-meta">
-            <span>{{ execution.status }}</span>
-            <span>{{ execution.currentStep || '-' }}</span>
-            <span>{{ formatRelative(execution.updatedAt) }}</span>
-          </div>
-        </div>
-        <p v-if="!executions.length" class="empty">no executions</p>
-      </aside>
-
-      <section class="center" v-if="selectedExecution && selectedWorkflow">
-        <WorkflowGraph
-          :graph="selectedWorkflow.graph"
-          :execution="selectedExecution"
-          :selected-step="selectedStep"
-          @select-step="selectedStep = $event"
-        />
-
-        <div v-if="selectedExecution.input != null" class="card">
-          <div class="card-header"><span class="name">input</span></div>
-          <div class="card-body"><JsonView :data="selectedExecution.input" /></div>
-        </div>
-        <div v-if="selectedExecution.output != null" class="card">
-          <div class="card-header"><span class="name">output</span></div>
-          <div class="card-body"><JsonView :data="selectedExecution.output" /></div>
-        </div>
-        <div v-if="selectedExecution.error" class="card">
-          <div class="card-header"><span class="name" style="color: var(--color-red);">error</span></div>
-          <div class="card-body"><JsonView :data="selectedExecution.error" /></div>
-        </div>
-      </section>
-
-      <aside class="inspector" v-if="selectedExecution && selectedWorkflow">
-        <div class="card">
-          <div class="card-header"><span class="name">execution</span></div>
-          <div class="card-body">
-            <div class="kv-row"><span class="kv-key">status</span><span class="kv-value">{{ selectedExecution.status }}</span></div>
-            <div class="kv-row"><span class="kv-key">current</span><span class="kv-value">{{ selectedExecution.currentStep || 'terminal' }}</span></div>
-            <div class="kv-row"><span class="kv-key">created</span><span class="kv-value">{{ new Date(selectedExecution.createdAt).toLocaleString() }}</span></div>
-            <div class="kv-row"><span class="kv-key">updated</span><span class="kv-value">{{ new Date(selectedExecution.updatedAt).toLocaleString() }}</span></div>
-          </div>
-        </div>
-
-        <div class="card" v-if="selectedStepState">
-          <div class="card-header">
-            <span class="name">step: {{ selectedStep }}</span>
-          </div>
-          <div class="card-body">
-            <p class="step-hint">click a node in the graph to inspect</p>
-            <div class="kv-row"><span class="kv-key">status</span><span class="kv-value">{{ selectedStepState.status }}</span></div>
-            <div class="kv-row"><span class="kv-key">attempts</span><span class="kv-value">{{ selectedStepState.attempts }}</span></div>
-            <div class="kv-row" v-if="selectedStepState.route"><span class="kv-key">route</span><span class="kv-value">{{ selectedStepState.route }}</span></div>
-            <div class="kv-row" v-if="selectedStepState.startedAt"><span class="kv-key">started</span><span class="kv-value">{{ new Date(selectedStepState.startedAt).toLocaleTimeString() }}</span></div>
-            <div class="kv-row" v-if="selectedStepState.endedAt"><span class="kv-key">ended</span><span class="kv-value">{{ new Date(selectedStepState.endedAt).toLocaleTimeString() }}</span></div>
-
-            <div v-if="selectedStepState.output != null && selectedStepState.output !== selectedStepState.route" style="margin-top: 8px;">
-              <div class="section-title">output</div>
-              <JsonView :data="selectedStepState.output" />
-            </div>
-            <div v-if="selectedStepState.error" style="margin-top: 8px;">
-              <div class="section-title" style="color: var(--color-red);">error</div>
-              <JsonView :data="selectedStepState.error" />
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><span class="name">journal</span></div>
-          <div class="card-body" style="padding: 0;">
-            <div class="timeline">
-              <div v-for="(entry, index) in timeline" :key="index" class="timeline-row">
-                <span class="timeline-type">{{ entry.type }}</span>
-                <span class="timeline-step">{{ entry.step || entry.route || '-' }}</span>
-                <span class="timeline-time">{{ new Date(entry.at).toLocaleTimeString() }}</span>
+    <div class="page-body">
+      <div class="exec-layout">
+        <aside class="exec-list">
+          <Panel>
+            <button
+              v-for="execution in executions"
+              :key="execution.id"
+              type="button"
+              class="exec-row"
+              :class="{ 'exec-row--active': execution.id === selectedId }"
+              @click="selectedId = execution.id"
+            >
+              <div class="exec-row__top">
+                <span class="exec-row__name">{{ execution.workflow }}</span>
+                <Badge :variant="statusVariant(execution.status)" size="sm">{{ execution.status }}</Badge>
               </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+              <div class="exec-row__meta">
+                <span class="exec-row__id">{{ shortId(execution.id) }}</span>
+                <span>{{ execution.currentStep || 'terminal' }}</span>
+                <span>{{ formatRelative(execution.updatedAt) }}</span>
+              </div>
+            </button>
+            <EmptyState v-if="!executions.length" title="No executions" description="Runs matching the filters will appear here." />
+          </Panel>
+        </aside>
+
+        <section v-if="selectedExecution && selectedWorkflow" class="exec-center">
+          <Panel gradient elevated>
+            <template #header>
+              <h2 class="exec-title">{{ selectedExecution.workflow }}</h2>
+              <p class="exec-sub">{{ selectedExecution.id }}</p>
+            </template>
+            <template #aside>
+              <Badge :variant="statusVariant(selectedExecution.status)" dot>{{ selectedExecution.status }}</Badge>
+            </template>
+            <PanelSection flush>
+              <WorkflowGraph
+                :graph="selectedWorkflow.graph"
+                :execution="selectedExecution"
+                :selected-step="selectedStep"
+                @select-step="selectedStep = $event"
+              />
+            </PanelSection>
+          </Panel>
+
+          <Panel v-if="selectedExecution.input != null" title="Input">
+            <PanelSection><JsonView :data="selectedExecution.input" /></PanelSection>
+          </Panel>
+          <Panel v-if="selectedExecution.output != null" title="Output">
+            <PanelSection><JsonView :data="selectedExecution.output" /></PanelSection>
+          </Panel>
+          <Panel v-if="selectedExecution.error" accent="lavender" title="Error">
+            <PanelSection><JsonView :data="selectedExecution.error" /></PanelSection>
+          </Panel>
+        </section>
+
+        <aside v-if="selectedExecution && selectedWorkflow" class="exec-inspector">
+          <Panel title="Execution">
+            <PanelSection>
+              <KeyValue layout="divided" boxed compact :items="executionItems" />
+            </PanelSection>
+          </Panel>
+
+          <Panel v-if="selectedStepState" :title="`Step · ${selectedStep}`">
+            <PanelSection>
+              <KeyValue layout="divided" boxed compact :items="stepItems" />
+            </PanelSection>
+            <PanelSection
+              v-if="selectedStepState.output != null && selectedStepState.output !== selectedStepState.route"
+              label="Output"
+            >
+              <JsonView :data="selectedStepState.output" />
+            </PanelSection>
+            <PanelSection v-if="selectedStepState.error" label="Error">
+              <JsonView :data="selectedStepState.error" />
+            </PanelSection>
+          </Panel>
+
+          <Panel title="Journal">
+            <PanelSection flush>
+              <div class="timeline">
+                <div v-for="(entry, index) in timeline" :key="index" class="timeline__row">
+                  <span class="timeline__type">{{ entry.type }}</span>
+                  <span class="timeline__step">{{ entry.step || entry.route || '—' }}</span>
+                  <span class="timeline__time">{{ new Date(entry.at).toLocaleTimeString() }}</span>
+                </div>
+                <EmptyState v-if="!timeline.length" title="No journal entries" />
+              </div>
+            </PanelSection>
+          </Panel>
+        </aside>
+      </div>
+
+      <EmptyState
+        v-if="!executions.length && !selectedExecution"
+        title="No executions yet"
+        description="Workflow runs will appear here as they are queued and processed."
+      />
     </div>
   </div>
 </template>
 
 <style scoped>
-.filters { display: flex; gap: 8px; margin-bottom: 16px; }
+.exec-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1180px) {
+  .exec-layout { grid-template-columns: 1fr; }
+}
 
-.execution-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
-.list { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; overflow: hidden; max-height: calc(100vh - 240px); overflow-y: auto; }
-.execution-row { padding: 10px 12px; border-bottom: 1px solid var(--bg-raised); cursor: pointer; }
-.execution-row:last-child { border-bottom: none; }
-.execution-row.active { background: var(--bg-raised); }
-.execution-main { display: flex; justify-content: space-between; gap: 8px; }
-.execution-workflow { color: var(--text-bright); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.execution-id { color: #666; font-size: 11px; flex-shrink: 0; }
-.execution-meta { display: flex; justify-content: space-between; gap: 6px; margin-top: 4px; color: var(--text-muted); font-size: 10px; }
-.execution-row.running .execution-workflow { color: #8fb3ff; }
-.execution-row.failed .execution-workflow { color: #d87a7a; }
-.execution-row.succeeded .execution-workflow { color: #7ec49b; }
+.exec-list { min-width: 0; }
+.exec-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 18px;
+  text-align: left;
+  cursor: pointer;
+  border-top: 1px solid var(--ink-08);
+  transition: background 120ms ease;
+}
+.exec-row:first-child { border-top: 0; }
+.exec-row:hover { background: var(--ink-04); }
+.exec-row--active { background: rgba(189, 187, 255, 0.16); }
+.exec-row__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.exec-row__name {
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.16px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-row__meta {
+  display: flex;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-40);
+}
+.exec-row__id { color: var(--ink-60); }
 
-.headline { margin-bottom: 14px; }
-.headline-name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
-.headline-sub { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.exec-center { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.exec-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  color: var(--ink);
+}
+.exec-sub {
+  margin: 4px 0 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-60);
+}
 
-.center { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-
-.inspector { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 240px); overflow-y: auto; }
-
-.step-hint { color: #383838; font-size: 10px; margin-bottom: 8px; font-style: italic; }
+.exec-inspector { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
 .timeline { max-height: 420px; overflow-y: auto; }
-.timeline-row { display: flex; gap: 6px; align-items: baseline; border-bottom: 1px solid var(--border-subtle); padding: 6px 12px; font-size: 10px; white-space: nowrap; }
-.timeline-row:last-child { border-bottom: none; }
-.timeline-type { color: #b1b1b1; flex-shrink: 0; }
-.timeline-step { color: #666; flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.timeline-time { color: var(--text-muted); flex-shrink: 0; }
+.timeline__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 24px;
+  border-top: 1px solid var(--ink-08);
+  font-size: 12px;
+}
+.timeline__row:first-child { border-top: 0; }
+.timeline__type {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.timeline__step {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-60);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timeline__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-40);
+}
 </style>

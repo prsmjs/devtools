@@ -3,6 +3,16 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import JsonView from '../components/JsonView.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import PanelSection from '../ui/components/PanelSection.vue'
+import Tabs from '../ui/components/Tabs.vue'
+import KeyValue from '../ui/components/KeyValue.vue'
+import ScrollArea from '../ui/components/ScrollArea.vue'
+import SectionLabel from '../ui/components/SectionLabel.vue'
+import Button from '../ui/components/Button.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
+import Badge from '../ui/components/Badge.vue'
 
 const props = defineProps({ config: Object })
 
@@ -184,10 +194,10 @@ const topoLevels = computed(() => {
   return levels
 })
 
-const nodeSize = { w: 160, h: 56 }
-const gap = { y: 24 }
-const minGapX = 80
-const padding = 20
+const nodeSize = { w: 168, h: 60 }
+const gap = { y: 28 }
+const minGapX = 90
+const padding = 24
 
 const layout = computed(() => {
   const positions = new Map()
@@ -246,351 +256,399 @@ function isRecent(name) {
 
 function statusColor(status) {
   switch (status) {
-    case 'current': return 'var(--color-green)'
-    case 'pending': return 'var(--color-blue)'
-    case 'stale': return 'var(--color-yellow)'
-    case 'error': return 'var(--color-red)'
-    default: return 'var(--text-muted)'
+    case 'current': return 'var(--status-active)'
+    case 'pending': return 'var(--status-paused)'
+    case 'stale': return 'var(--status-warning)'
+    case 'error': return 'var(--status-failed)'
+    default: return 'var(--ink-40)'
   }
 }
+
+function statusVariant(status) {
+  switch (status) {
+    case 'pending': return 'paused'
+    case 'stale': return 'warning'
+    case 'error': return 'failed'
+    default: return 'active'
+  }
+}
+
+const counts = computed(() => {
+  const c = { current: 0, pending: 0, error: 0, stale: 0 }
+  for (const cell of cells.value) {
+    if (c[cell.status] !== undefined) c[cell.status]++
+  }
+  return c
+})
+
+function toKvItems(obj) {
+  if (!obj) return []
+  return Object.entries(obj).map(([label, v]) => ({
+    label,
+    value: typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v),
+  }))
+}
+
+const sourceItems = computed(() => toKvItems(selected.value?.source))
+const metadataItems = computed(() => toKvItems(selected.value?.metadata))
+
+const graphItems = computed(() => {
+  const s = selected.value
+  if (!s) return []
+  const items = [
+    { label: 'Dependencies', value: s.deps.length ? s.deps.join(', ') : '—' },
+    { label: 'Dependents', value: s.dependents.length ? s.dependents.join(', ') : '—' },
+  ]
+  if (s.computeTime != null) items.push({ label: 'Last compute', value: `${s.computeTime}ms` })
+  items.push({ label: 'Updated', value: formatTime(s.updatedAt) })
+  return items
+})
+
+const historyItems = computed(() =>
+  history.value.slice().reverse().map((e) => ({
+    label: formatTime(e.timestamp),
+    value: formatValue(e.value),
+  }))
+)
 </script>
 
 <template>
-  <div class="cells-page">
-    <div class="cells-toolbar">
-      <div class="left-group">
-        <div class="graph-tabs" v-if="graphs.length > 1">
-          <button
-            v-for="name in graphs"
-            :key="name"
-            :class="{ active: name === currentGraph }"
-            @click="currentGraph = name"
-          >{{ name }}</button>
-        </div>
-        <div class="view-toggle">
-          <button :class="{ active: view === 'table' }" @click="view = 'table'">table</button>
-          <button :class="{ active: view === 'graph' }" @click="view = 'graph'">graph</button>
-        </div>
-      </div>
-      <div class="stats">
-        <span>{{ cells.length }} cells</span>
-        <span class="dot"></span>
-        <span>{{ cells.filter(c => c.status === 'current').length }} current</span>
-        <span v-if="cells.filter(c => c.status === 'pending').length" class="dot"></span>
-        <span v-if="cells.filter(c => c.status === 'pending').length" style="color: var(--color-blue)">{{ cells.filter(c => c.status === 'pending').length }} pending</span>
-        <span v-if="cells.filter(c => c.status === 'error').length" class="dot"></span>
-        <span v-if="cells.filter(c => c.status === 'error').length" style="color: var(--color-red)">{{ cells.filter(c => c.status === 'error').length }} error</span>
-      </div>
-    </div>
+  <div>
+    <PageHeader
+      eyebrow="Reactive graphs"
+      title="Cells"
+      subtitle="Inspect reactive computation graphs - values, dependencies, and live propagation."
+    >
+      <template #actions>
+        <Tabs
+          v-if="graphs.length > 1"
+          :model-value="currentGraph"
+          :tabs="graphs.map((g) => ({ value: g, label: g }))"
+          variant="pills"
+          @update:model-value="currentGraph = $event"
+        />
+      </template>
+    </PageHeader>
 
-    <div class="cells-layout">
-      <div class="cells-main">
-        <div v-if="view === 'table'" class="card">
-          <div class="cell-row header">
-            <span class="col-name">name</span>
-            <span class="col-value">value</span>
-            <span class="col-deps">deps</span>
-            <span class="col-status">status</span>
-            <span class="col-updated">updated</span>
+    <div class="page-body">
+      <section class="page-section">
+        <div class="cells-toolbar">
+          <Tabs
+            v-model="view"
+            :tabs="[{ value: 'table', label: 'Table' }, { value: 'graph', label: 'Graph' }]"
+            variant="pills"
+          />
+          <div class="cell-counts">
+            <span>{{ cells.length }} cells</span>
+            <span class="cell-counts__sep" />
+            <span class="cell-counts__stat">{{ counts.current }} current</span>
+            <template v-if="counts.pending">
+              <span class="cell-counts__sep" />
+              <span class="cell-counts__stat" style="color: var(--status-paused)">{{ counts.pending }} pending</span>
+            </template>
+            <template v-if="counts.error">
+              <span class="cell-counts__sep" />
+              <span class="cell-counts__stat" style="color: var(--status-failed)">{{ counts.error }} error</span>
+            </template>
           </div>
-          <div
-            v-for="cell in cells"
-            :key="cell.name"
-            class="cell-row"
-            :class="{ selected: selected?.name === cell.name, recent: isRecent(cell.name) }"
-            @click="select(cell)"
-          >
-            <span class="col-name">{{ cell.name }}</span>
-            <span class="col-value" :title="JSON.stringify(cell.value)">{{ formatValue(cell.value) }}</span>
-            <span class="col-deps">{{ cell.deps.length ? cell.deps.join(', ') : '—' }}</span>
-            <span class="col-status" :style="{ color: statusColor(cell.status) }">{{ cell.status === 'current' ? '' : cell.status }}</span>
-            <span class="col-updated">{{ formatTime(cell.updatedAt) }}</span>
+        </div>
+
+        <Panel>
+          <div v-if="view === 'table'">
+            <div v-if="cells.length" class="ctable">
+              <div class="ctable__head">
+                <span class="ctable__col ctable__col--name">Name</span>
+                <span class="ctable__col ctable__col--value">Value</span>
+                <span class="ctable__col ctable__col--deps">Dependencies</span>
+                <span class="ctable__col ctable__col--status">Status</span>
+                <span class="ctable__col ctable__col--updated">Updated</span>
+              </div>
+              <div
+                v-for="cell in cells"
+                :key="cell.name"
+                class="ctable__row"
+                :class="{ 'ctable__row--selected': selectedName === cell.name, 'ctable__row--recent': isRecent(cell.name) }"
+                @click="select(cell)"
+              >
+                <span class="ctable__col ctable__col--name">{{ cell.name }}</span>
+                <span class="ctable__col ctable__col--value" :title="JSON.stringify(cell.value)">{{ formatValue(cell.value) }}</span>
+                <span class="ctable__col ctable__col--deps">{{ cell.deps.length ? cell.deps.join(', ') : '—' }}</span>
+                <span class="ctable__col ctable__col--status">
+                  <Badge v-if="cell.status !== 'current'" :variant="statusVariant(cell.status)" size="sm">{{ cell.status }}</Badge>
+                </span>
+                <span class="ctable__col ctable__col--updated">{{ formatTime(cell.updatedAt) }}</span>
+              </div>
+            </div>
+            <EmptyState v-else title="No cells" description="This graph has no cells defined." />
           </div>
-          <div v-if="!cells.length" class="empty">no cells in graph</div>
-        </div>
 
-        <div v-else class="graph-wrap" ref="graphWrap">
-          <svg :width="layout.width" :height="layout.height">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M0,0 L10,5 L0,10 z" fill="var(--text-muted)" />
-              </marker>
-              <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)" />
-              </marker>
-            </defs>
-            <g>
-              <path
-                v-for="(edge) in edges"
-                :key="`${edge.from}->${edge.to}`"
-                :d="`M${edge.x1},${edge.y1} C${edge.x1 + 30},${edge.y1} ${edge.x2 - 30},${edge.y2} ${edge.x2},${edge.y2}`"
-                fill="none"
-                stroke-width="1"
-                class="edge-line"
-                :class="{ recent: isRecent(edge.from) }"
-                :marker-end="isRecent(edge.from) ? 'url(#arrow-active)' : 'url(#arrow)'"
-              />
-            </g>
-            <g
-              v-for="cell in cells"
-              :key="cell.name"
-              :transform="`translate(${layout.positions.get(cell.name)?.x ?? 0}, ${layout.positions.get(cell.name)?.y ?? 0})`"
-              class="node-group"
-              :class="{ selected: selected?.name === cell.name, recent: isRecent(cell.name) }"
-              @click="select(cell)"
-            >
-              <rect :width="nodeSize.w" :height="nodeSize.h" rx="4" />
-              <circle :cx="10" :cy="10" r="3" :fill="statusColor(cell.status)" />
-              <clipPath :id="`clip-${cell.name}`">
-                <rect :width="nodeSize.w - 8" :height="nodeSize.h - 4" x="4" y="2" />
-              </clipPath>
-              <g :clip-path="`url(#clip-${cell.name})`">
-                <text :x="nodeSize.w / 2" :y="24" text-anchor="middle" class="node-name">{{ truncate(cell.name, 22) }}</text>
-                <text :x="nodeSize.w / 2" :y="42" text-anchor="middle" class="node-value">{{ truncate(formatValue(cell.value), 22) }}</text>
-              </g>
-            </g>
-          </svg>
-          <div v-if="!cells.length" class="empty">no cells in graph</div>
-        </div>
-      </div>
+          <div v-else>
+            <div v-if="cells.length" class="graph-wrap pc-scroll" ref="graphWrap">
+              <svg :width="layout.width" :height="layout.height">
+                <defs>
+                  <marker id="cell-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 z" fill="rgba(0,0,0,0.25)" />
+                  </marker>
+                  <marker id="cell-arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 z" fill="var(--lavender)" />
+                  </marker>
+                </defs>
+                <g>
+                  <path
+                    v-for="edge in edges"
+                    :key="`${edge.from}->${edge.to}`"
+                    :d="`M${edge.x1},${edge.y1} C${edge.x1 + 36},${edge.y1} ${edge.x2 - 36},${edge.y2} ${edge.x2},${edge.y2}`"
+                    fill="none"
+                    stroke-width="1.5"
+                    class="edge-line"
+                    :class="{ recent: isRecent(edge.from) }"
+                    :marker-end="isRecent(edge.from) ? 'url(#cell-arrow-active)' : 'url(#cell-arrow)'"
+                  />
+                </g>
+                <g
+                  v-for="cell in cells"
+                  :key="cell.name"
+                  :transform="`translate(${layout.positions.get(cell.name)?.x ?? 0}, ${layout.positions.get(cell.name)?.y ?? 0})`"
+                  class="node-group"
+                  :class="{ selected: selectedName === cell.name, recent: isRecent(cell.name) }"
+                  @click="select(cell)"
+                >
+                  <rect :width="nodeSize.w" :height="nodeSize.h" rx="8" />
+                  <circle :cx="14" :cy="14" r="3.5" :fill="statusColor(cell.status)" />
+                  <clipPath :id="`clip-${cell.name}`">
+                    <rect :width="nodeSize.w - 10" :height="nodeSize.h - 6" x="5" y="3" />
+                  </clipPath>
+                  <g :clip-path="`url(#clip-${cell.name})`">
+                    <text :x="nodeSize.w / 2" :y="26" text-anchor="middle" class="node-name">{{ truncate(cell.name, 22) }}</text>
+                    <text :x="nodeSize.w / 2" :y="45" text-anchor="middle" class="node-value">{{ truncate(formatValue(cell.value), 24) }}</text>
+                  </g>
+                </g>
+              </svg>
+            </div>
+            <EmptyState v-else title="No cells" description="This graph has no cells defined." />
+          </div>
+        </Panel>
+      </section>
 
-    </div>
+      <section v-if="selected" class="page-section">
+        <Panel gradient elevated accent="lavender">
+          <template #header>
+            <SectionLabel size="md">{{ currentGraph }}</SectionLabel>
+            <h2 class="detail-title">{{ selected.name }}</h2>
+            <p class="detail-sub">
+              {{ selected.kind === 'template' ? 'Templated cell' : selected.deps.length ? 'Computed cell' : 'Source cell' }}
+            </p>
+          </template>
+          <template #aside>
+            <div class="detail-aside">
+              <Badge :variant="statusVariant(selected.status)" dot>{{ selected.status }}</Badge>
+              <Button variant="ghost" size="sm" icon="lucide:x" @click="closeDetail" />
+            </div>
+          </template>
 
-    <div class="cells-detail" v-if="selected">
-      <div class="detail-header">
-        <span class="detail-name">{{ selected.name }}</span>
-        <span
-          v-if="selected.status !== 'current'"
-          class="detail-status"
-          :style="{ color: statusColor(selected.status) }"
-        >{{ selected.status }}</span>
-        <span class="detail-close" @click="closeDetail">×</span>
-      </div>
-
-      <div class="detail-grid">
-        <div class="detail-main">
-          <div class="detail-card span-2">
-            <div class="detail-label">value</div>
-            <div class="detail-content scroll-y">
+          <PanelSection label="Value">
+            <div class="detail-box detail-box--scroll">
               <JsonView :data="selected.value" />
             </div>
-          </div>
+          </PanelSection>
 
-          <div class="detail-card span-2" v-if="selected.template">
-            <div class="detail-label">template</div>
-            <pre class="detail-pre">{{ selected.template }}</pre>
-          </div>
+          <PanelSection v-if="selected.template" label="Template">
+            <pre class="detail-template">{{ selected.template }}</pre>
+          </PanelSection>
 
-          <div class="detail-card">
-            <div class="detail-label">
-              history
-              <span v-if="selected.historyLimit > 0" class="detail-label-meta">{{ history.length }} / {{ selected.historyLimit }}</span>
-            </div>
-            <div v-if="selected.historyLimit > 0" class="history-list">
-              <div v-for="entry in history.slice().reverse()" :key="entry.timestamp" class="history-entry">
-                <span class="history-time">{{ formatTime(entry.timestamp) }}</span>
-                <span class="history-value" :title="JSON.stringify(entry.value)">{{ formatValue(entry.value) }}</span>
-              </div>
-              <div v-if="!history.length" class="empty-small">no entries yet</div>
-            </div>
-            <div v-else class="history-disabled">
-              History is not enabled for this cell. To capture recent values, define it with <code>{ history: true }</code> or <code>{ history: N }</code>.
-            </div>
-          </div>
+          <PanelSection v-if="selected.error" label="Error">
+            <div class="detail-box detail-error">{{ selected.error }}</div>
+          </PanelSection>
 
-          <div class="detail-card" v-if="selected.error">
-            <div class="detail-label">error</div>
-            <div class="detail-content" style="color: var(--color-red)">{{ selected.error }}</div>
-          </div>
+          <PanelSection :label="`History${selected.historyLimit > 0 ? ` · ${history.length} / ${selected.historyLimit}` : ''}`">
+            <ScrollArea v-if="selected.historyLimit > 0 && historyItems.length" max-height="260px">
+              <KeyValue layout="divided" boxed compact :items="historyItems" />
+            </ScrollArea>
+            <p v-else-if="selected.historyLimit > 0" class="detail-hint">No entries captured yet.</p>
+            <p v-else class="detail-hint">
+              History is not enabled for this cell. Define it with
+              <code>{ history: true }</code> or <code>{ history: N }</code> to capture recent values.
+            </p>
+          </PanelSection>
 
-          <div class="detail-card" v-if="selected.source">
-            <div class="detail-label">source</div>
-            <div class="kv-list">
-              <div v-for="(v, k) in selected.source" :key="k" class="kv-list-row">
-                <span class="kv-list-key">{{ k }}</span>
-                <span class="kv-list-val">{{ typeof v === 'object' ? JSON.stringify(v) : String(v) }}</span>
-              </div>
-            </div>
-          </div>
+          <PanelSection v-if="sourceItems.length" label="Source">
+            <KeyValue layout="divided" boxed :items="sourceItems" />
+          </PanelSection>
 
-          <div class="detail-card" v-if="selected.metadata">
-            <div class="detail-label">metadata</div>
-            <div class="kv-list">
-              <div v-for="(v, k) in selected.metadata" :key="k" class="kv-list-row">
-                <span class="kv-list-key">{{ k }}</span>
-                <span class="kv-list-val">{{ typeof v === 'object' ? JSON.stringify(v) : String(v) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+          <PanelSection v-if="metadataItems.length" label="Metadata">
+            <KeyValue layout="divided" boxed :items="metadataItems" />
+          </PanelSection>
 
-        <div class="detail-side">
-          <div class="detail-card">
-            <div class="detail-label">graph</div>
-            <div class="kv-list">
-              <div class="kv-list-row">
-                <span class="kv-list-key">deps</span>
-                <span class="kv-list-val">{{ selected.deps.length ? selected.deps.join(', ') : '—' }}</span>
-              </div>
-              <div class="kv-list-row">
-                <span class="kv-list-key">dependents</span>
-                <span class="kv-list-val">{{ selected.dependents.length ? selected.dependents.join(', ') : '—' }}</span>
-              </div>
-              <div class="kv-list-row" v-if="selected.computeTime !== null && selected.computeTime !== undefined">
-                <span class="kv-list-key">last compute</span>
-                <span class="kv-list-val">{{ selected.computeTime }}ms</span>
-              </div>
-              <div class="kv-list-row">
-                <span class="kv-list-key">updated</span>
-                <span class="kv-list-val">{{ formatTime(selected.updatedAt) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+          <PanelSection label="Dependencies" tone="muted">
+            <KeyValue layout="divided" :dividers="false" :items="graphItems" />
+          </PanelSection>
+        </Panel>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-.cells-page { display: flex; flex-direction: column; gap: 12px; }
+.cells-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.cell-counts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink-60);
+}
+.cell-counts__sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
+.cell-counts__stat { font-variant-numeric: tabular-nums; }
 
-.cells-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.left-group { display: flex; align-items: center; gap: 12px; }
-.graph-tabs { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-.graph-tabs button {
-  padding: 6px 14px; background: var(--bg-surface); color: var(--text-muted); border: none;
-  font: inherit; font-size: 11px; cursor: pointer; border-right: 1px solid var(--border);
+/* table */
+.ctable { display: flex; flex-direction: column; }
+.ctable__head,
+.ctable__row {
+  display: flex;
+  align-items: center;
 }
-.graph-tabs button:last-child { border-right: none; }
-.graph-tabs button.active { background: var(--accent-dim); color: var(--accent-text); }
-.graph-tabs button:hover:not(.active) { background: var(--bg-hover); color: var(--text); }
-.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-.view-toggle button {
-  padding: 6px 14px; background: var(--bg-surface); color: var(--text-muted); border: none;
-  font: inherit; font-size: 11px; cursor: pointer; border-right: 1px solid var(--border);
+.ctable__head {
+  border-bottom: 1px solid var(--ink-08);
 }
-.view-toggle button:last-child { border-right: none; }
-.view-toggle button.active { background: var(--accent-dim); color: var(--accent-text); }
-.view-toggle button:hover:not(.active) { background: var(--bg-hover); color: var(--text); }
-
-.stats { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
-.dot { width: 3px; height: 3px; background: var(--text-muted); border-radius: 50%; }
-
-.cells-layout { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-.cells-main { min-width: 0; overflow: auto; }
-.cells-detail {
-  background: var(--bg-surface); border: 1px solid var(--border-subtle);
-  border-radius: 4px; padding: 12px;
+.ctable__head .ctable__col {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  color: var(--ink-60);
+  padding: 12px 16px;
 }
-
-.detail-grid {
-  display: grid; gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 240px;
+.ctable__row {
+  border-bottom: 1px solid var(--ink-08);
+  cursor: pointer;
+  transition: background 120ms ease;
 }
-.detail-main {
-  display: grid; gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  min-width: 0;
-}
-.detail-side { display: flex; flex-direction: column; gap: 10px; }
-.detail-card {
-  background: var(--bg); border: 1px solid var(--border-subtle); border-radius: 3px;
-  padding: 10px; min-width: 0; display: flex; flex-direction: column; gap: 6px;
-}
-.detail-card.span-2 { grid-column: span 2; }
-@media (max-width: 900px) {
-  .detail-grid { grid-template-columns: minmax(0, 1fr); }
-  .detail-card.span-2 { grid-column: span 1; }
-}
-.scroll-y { max-height: 220px; overflow-y: auto; }
-
-.kv-list { display: flex; flex-direction: column; gap: 8px; }
-.kv-list-row { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.kv-list-key {
-  font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
-}
-.kv-list-val {
-  font-size: 11px; color: var(--text); word-break: break-word;
-  font-family: 'SF Mono', monospace;
-}
-
-.cell-row { display: flex; align-items: center; border-bottom: 1px solid var(--border-subtle); font-size: 11px; cursor: pointer; }
-.cell-row:last-child { border-bottom: none; }
-.cell-row:hover { background: var(--bg-hover); }
-.cell-row.selected { background: var(--accent-dim); }
-.cell-row.recent { animation: flash 0.8s ease-out; }
-.cell-row.header {
-  font-size: 10px; color: var(--text-muted); letter-spacing: 0.3px; text-transform: uppercase;
-  cursor: default; border-bottom: 1px solid var(--border);
-}
-.cell-row.header:hover { background: transparent; }
-
-@keyframes flash {
-  0% { background: var(--accent-dim); }
+.ctable__row:last-child { border-bottom: 0; }
+.ctable__row:hover { background: var(--ink-04); }
+.ctable__row--selected { background: rgba(189, 187, 255, 0.16); }
+.ctable__row--recent { animation: cell-flash 0.8s ease-out; }
+@keyframes cell-flash {
+  0% { background: rgba(189, 187, 255, 0.45); }
   100% { background: transparent; }
 }
+.ctable__col { padding: 13px 16px; font-size: 14px; }
+.ctable__col--name { flex: 0 0 220px; font-weight: 500; color: var(--ink); letter-spacing: -0.16px; }
+.ctable__col--value {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink-60);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctable__col--deps {
+  flex: 0 0 240px;
+  font-size: 12.5px; color: var(--ink-40);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctable__col--status { flex: 0 0 110px; }
+.ctable__col--updated {
+  flex: 0 0 120px; text-align: right;
+  font-size: 12.5px; color: var(--ink-40);
+  font-variant-numeric: tabular-nums;
+}
 
-.col-name { flex: 0 0 200px; padding: 8px 12px; color: var(--text-bright); }
-.col-value { flex: 1; padding: 8px 12px; color: var(--text); font-family: 'SF Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.col-deps { flex: 0 0 200px; padding: 8px 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.col-status { flex: 0 0 80px; padding: 8px 12px; }
-.col-updated { flex: 0 0 100px; padding: 8px 12px; color: var(--text-muted); text-align: right; }
-
-.graph-wrap { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 8px; overflow: auto; width: 100%; box-sizing: border-box; }
+/* graph */
+.graph-wrap { width: 100%; padding: 12px; overflow: auto; }
 .graph-wrap svg { display: block; }
-
 .node-group { cursor: pointer; }
-.node-group rect { fill: var(--bg-raised); stroke: var(--border); stroke-width: 1; }
-.node-group:hover rect { stroke: var(--text-muted); }
-.node-group.selected rect { stroke: var(--accent); stroke-width: 1.5; }
-.node-group.recent rect { animation: pulse-rect 0.8s ease-out; }
-
-@keyframes pulse-rect {
-  0% { fill: var(--accent-dim); stroke: var(--accent); }
-  100% { fill: var(--bg-raised); stroke: var(--border); }
+.node-group rect {
+  fill: var(--paper);
+  stroke: var(--ink-08);
+  stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgba(1, 1, 32, 0.05));
+}
+.node-group:hover rect { stroke: var(--ink-20); }
+.node-group.selected rect { stroke: var(--lavender); stroke-width: 2; }
+.node-group.recent rect { animation: node-flash 0.8s ease-out; }
+@keyframes node-flash {
+  0% { fill: rgba(189, 187, 255, 0.35); stroke: var(--lavender); }
+  100% { fill: var(--paper); stroke: var(--ink-08); }
+}
+.edge-line { stroke: var(--ink-20); }
+.edge-line.recent { animation: edge-flash 0.8s ease-out; }
+@keyframes edge-flash {
+  0% { stroke: var(--lavender); }
+  100% { stroke: var(--ink-20); }
+}
+.node-name {
+  fill: var(--ink);
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+}
+.node-value {
+  fill: var(--ink-60);
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
-.edge-line { stroke: var(--border); }
-.edge-line.recent { animation: pulse-edge 0.8s ease-out; }
-@keyframes pulse-edge {
-  0% { stroke: var(--accent); }
-  100% { stroke: var(--border); }
+/* detail panel */
+.detail-title {
+  margin: 8px 0 0;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.56px;
+  line-height: 1.1;
+  color: var(--ink);
 }
-
-.node-name { fill: var(--text-bright); font: 600 11px 'SF Mono', monospace; }
-.node-value { fill: var(--text); font: 10px 'SF Mono', monospace; }
-
-.detail-header {
-  display: flex; align-items: center; gap: 8px; padding-bottom: 10px; margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+.detail-sub {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink-60);
+  letter-spacing: -0.14px;
 }
-.detail-name { flex: 1; font-size: 12px; color: var(--text-bright); font-weight: 600; }
-.detail-status { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
-.detail-spacer { flex: 1; }
-.detail-close { cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 0 4px; }
-.detail-close:hover { color: var(--text-bright); }
+.detail-aside { display: flex; align-items: center; gap: 10px; }
 
-.detail-section { margin-bottom: 14px; }
-.detail-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-.detail-content { font-size: 11px; color: var(--text); word-break: break-word; }
-.detail-pre {
-  font: 11px 'SF Mono', monospace; color: var(--text); background: var(--bg);
-  border: 1px solid var(--border-subtle); border-radius: 3px; padding: 8px;
-  white-space: pre-wrap; overflow-x: auto; max-height: 220px;
+.detail-box {
+  background: var(--ink-04);
+  border-radius: var(--radius-comfy);
+  padding: 14px 16px;
 }
-
-.detail-label { display: flex; align-items: center; gap: 8px; }
-.detail-label-meta { font-size: 9px; color: var(--text); text-transform: none; letter-spacing: 0; font-family: 'SF Mono', monospace; }
-.history-disabled { font-size: 10px; color: var(--text-muted); line-height: 1.5; }
-.history-disabled code { background: var(--bg-raised); color: var(--text); padding: 1px 4px; border-radius: 2px; font-size: 10px; }
-.history-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
-.history-entry {
-  display: flex; gap: 8px; align-items: center; font-size: 10px; padding: 3px 6px;
-  background: var(--bg); border-radius: 2px;
+.detail-box--scroll { max-height: 280px; overflow-y: auto; }
+.detail-error {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--status-failed);
+  word-break: break-word;
 }
-.history-time { flex: 0 0 70px; color: var(--text-muted); }
-.history-value { flex: 1; color: var(--text); font-family: 'SF Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.empty { padding: 20px; text-align: center; color: var(--text-muted); font-size: 11px; }
-.empty-small { padding: 6px; text-align: center; color: var(--text-muted); font-size: 10px; }
+.detail-template {
+  margin: 0;
+  background: var(--ink-04);
+  border-radius: var(--radius-comfy);
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.detail-hint {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-60);
+  line-height: 1.55;
+}
+.detail-hint code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--paper);
+  border: 1px solid var(--ink-08);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
 </style>

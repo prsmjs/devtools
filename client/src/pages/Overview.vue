@@ -1,10 +1,17 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useSSE } from '../sse.js'
+import PastelBg from '../ui/components/PastelBg.vue'
+import Display from '../ui/components/Display.vue'
+import SectionLabel from '../ui/components/SectionLabel.vue'
+import ToggleGroup from '../ui/components/ToggleGroup.vue'
+import Panel from '../ui/components/Panel.vue'
+import Badge from '../ui/components/Badge.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
 
 const props = defineProps({ config: Object })
 const events = useSSE()
-const enabledSources = ref({ queue: true, cron: true, limit: true, workflow: true, cells: true })
+const enabled = ref([])
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString()
@@ -19,120 +26,162 @@ function action(type) {
   return parts[0] === 'workflow' ? parts.slice(1).join(':') : parts[1]
 }
 
-function toggleSource(name) {
-  enabledSources.value[name] = !enabledSources.value[name]
+const ACTIVE = new Set(['complete', 'fire', 'execution:succeeded', 'step:succeeded', 'change'])
+const FAILED = new Set(['failed', 'error', 'execution:failed', 'step:failed', 'execution:lease-lost'])
+const WARN = new Set(['retry', 'step:retry'])
+const INFO = new Set(['step:routed'])
+
+function actionVariant(type) {
+  const a = action(type)
+  if (ACTIVE.has(a)) return 'active'
+  if (FAILED.has(a)) return 'failed'
+  if (WARN.has(a)) return 'warning'
+  if (INFO.has(a)) return 'paused'
+  return 'default'
 }
 
 watch(
   () => props.config,
   (config) => {
     if (!config) return
-
-    enabledSources.value = {
-      queue: Boolean(config.queue),
-      cron: Boolean(config.cron),
-      limit: Boolean(config.limit?.length),
-      workflow: Boolean(config.workflow),
-      cells: Boolean(config.cells?.length),
-    }
+    const keys = []
+    if (config.queue) keys.push('queue')
+    if (config.cron) keys.push('cron')
+    if (config.limit?.length) keys.push('limit')
+    if (config.workflow) keys.push('workflow')
+    if (config.cells?.length) keys.push('cells')
+    enabled.value = keys
   },
   { immediate: true, deep: true }
 )
 
+const subsystemOptions = computed(() => [
+  { value: 'queue', label: 'Queue', disabled: !props.config?.queue },
+  { value: 'cron', label: 'Cron', disabled: !props.config?.cron },
+  {
+    value: 'limit',
+    label: props.config?.limit?.length ? `Limit (${props.config.limit.length})` : 'Limit',
+    disabled: !props.config?.limit?.length,
+  },
+  { value: 'workflow', label: 'Workflow', disabled: !props.config?.workflow },
+  {
+    value: 'cells',
+    label: props.config?.cells?.length ? `Cells (${props.config.cells.length})` : 'Cells',
+    disabled: !props.config?.cells?.length,
+  },
+])
+
+const today = computed(() =>
+  new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+)
+
 const filteredEvents = computed(() =>
-  events.value.filter((evt) => enabledSources.value[source(evt.type)] !== false)
+  events.value.filter((evt) => enabled.value.includes(source(evt.type)))
 )
 </script>
 
 <template>
   <div>
-    <div class="section-title">subsystems</div>
-
-    <div class="subsystems">
-      <button
-        class="chip"
-        :class="{ on: config.queue && enabledSources.queue, off: config.queue && !enabledSources.queue }"
-        :disabled="!config.queue"
-        @click="toggleSource('queue')"
-      >
-        queue
-      </button>
-      <button
-        class="chip"
-        :class="{ on: config.cron && enabledSources.cron, off: config.cron && !enabledSources.cron }"
-        :disabled="!config.cron"
-        @click="toggleSource('cron')"
-      >
-        cron
-      </button>
-      <button
-        class="chip"
-        :class="{ on: config.limit?.length && enabledSources.limit, off: config.limit?.length && !enabledSources.limit }"
-        :disabled="!config.limit?.length"
-        @click="toggleSource('limit')"
-      >
-        limit{{ config.limit?.length ? ` (${config.limit.length})` : '' }}
-      </button>
-      <button
-        class="chip"
-        :class="{ on: config.workflow && enabledSources.workflow, off: config.workflow && !enabledSources.workflow }"
-        :disabled="!config.workflow"
-        @click="toggleSource('workflow')"
-      >
-        workflow
-      </button>
-      <button
-        class="chip"
-        :class="{ on: config.cells?.length && enabledSources.cells, off: config.cells?.length && !enabledSources.cells }"
-        :disabled="!config.cells?.length"
-        @click="toggleSource('cells')"
-      >
-        cells{{ config.cells?.length ? ` (${config.cells.length})` : '' }}
-      </button>
-    </div>
-
-    <section>
-      <div class="section-title">event stream</div>
-      <div class="stream" v-if="filteredEvents.length">
-        <div v-for="(evt, i) in filteredEvents.slice(0, 80)" :key="i" class="event-row">
-          <span class="event-source">{{ source(evt.type) }}</span>
-          <span class="event-action" :class="action(evt.type).replace(':', '-')">{{ action(evt.type) }}</span>
-          <span class="event-data">{{ JSON.stringify(evt.data) }}</span>
-          <span class="event-time">{{ formatTime(evt.ts) }}</span>
-        </div>
+    <PastelBg class="hero">
+      <div class="hero__inner">
+        <SectionLabel>{{ today }}</SectionLabel>
+        <Display size="lg" class="hero__title">Runtime overview</Display>
       </div>
-      <p v-else class="empty" style="text-align: left; padding: 0;">waiting for events</p>
-    </section>
+    </PastelBg>
+
+    <div class="page-body">
+      <section class="page-section">
+        <div class="filter-row">
+          <span class="filter-row__label">Subsystems</span>
+          <ToggleGroup
+            multiple
+            :model-value="enabled"
+            :options="subsystemOptions"
+            @update:model-value="enabled = $event || []"
+          />
+        </div>
+      </section>
+
+      <section class="page-section">
+        <Panel title="Event stream" description="Newest events first, streamed live over SSE.">
+          <div v-if="filteredEvents.length" class="stream">
+            <div v-for="(evt, i) in filteredEvents.slice(0, 100)" :key="i" class="event">
+              <span class="event__source">{{ source(evt.type) }}</span>
+              <Badge :variant="actionVariant(evt.type)" size="sm">{{ action(evt.type) }}</Badge>
+              <span class="event__data">{{ JSON.stringify(evt.data) }}</span>
+              <span class="event__time">{{ formatTime(evt.ts) }}</span>
+            </div>
+          </div>
+          <EmptyState
+            v-else
+            title="Waiting for events"
+            description="Activity from connected subsystems will appear here as it happens."
+          />
+        </Panel>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-section { margin-top: 28px; }
+.hero {
+  padding: 64px 32px 56px;
+  border-bottom: 1px solid var(--ink-08);
+}
+.hero__inner { max-width: 820px; }
+.hero__title { margin-top: 14px; }
 
-.subsystems { display: flex; gap: 8px; margin-bottom: 20px; }
-.chip { padding: 5px 14px; font-size: 11px; font-weight: 500; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; font-family: inherit; cursor: pointer; }
-.chip.on { color: var(--text); border-color: #333; }
-.chip.off { color: var(--text-muted); border-color: var(--border-subtle); opacity: 0.55; }
-.chip:disabled { cursor: default; opacity: 0.35; }
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.filter-row__label {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-60);
+}
 
-.stream { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; max-height: 520px; overflow-y: auto; }
-.event-row { display: flex; gap: 0; align-items: center; padding: 0; border-bottom: 1px solid var(--bg-raised); font-size: 11px; }
-.event-row:last-child { border-bottom: none; }
-
-.event-source { width: 72px; padding: 6px 8px; color: var(--text-muted); text-align: right; border-right: 1px solid var(--bg-raised); flex-shrink: 0; }
-.event-action { width: 152px; padding: 6px 8px; color: var(--text-muted); flex-shrink: 0; }
-.event-action.complete { color: var(--color-green); }
-.event-action.fire { color: var(--color-green); }
-.event-action.execution-succeeded { color: var(--color-green); }
-.event-action.step-succeeded { color: var(--color-green); }
-.event-action.step-routed { color: var(--color-blue); }
-.event-action.failed { color: var(--color-red); }
-.event-action.error { color: var(--color-red); }
-.event-action.execution-failed { color: var(--color-red); }
-.event-action.step-failed { color: var(--color-red); }
-.event-action.execution-lease-lost { color: var(--color-red); }
-.event-action.retry { color: var(--color-yellow); }
-.event-action.step-retry { color: var(--color-yellow); }
-.event-data { flex: 1; min-width: 0; padding: 6px 8px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.event-time { width: 80px; padding: 6px 8px; color: var(--text-muted); text-align: right; flex-shrink: 0; }
+.stream {
+  max-height: 560px;
+  overflow-y: auto;
+}
+.event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 24px;
+  border-top: 1px solid var(--ink-08);
+  font-size: 13px;
+}
+.event:first-child { border-top: 0; }
+.event__source {
+  width: 76px;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-40);
+}
+.event__data {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-60);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-40);
+}
 </style>

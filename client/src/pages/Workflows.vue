@@ -3,6 +3,12 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.js'
 import WorkflowGraph from '../components/WorkflowGraph.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import PanelSection from '../ui/components/PanelSection.vue'
+import KeyValue from '../ui/components/KeyValue.vue'
+import Badge from '../ui/components/Badge.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +21,7 @@ const loadError = ref(null)
 async function load() {
   const res = await fetch(api('/workflows'))
   if (!res.ok) {
-    loadError.value = 'failed to load workflows'
+    loadError.value = 'Failed to load workflows.'
     return
   }
 
@@ -52,92 +58,164 @@ const selectedWorkflow = computed(() =>
 const selectedNode = computed(() =>
   selectedWorkflow.value?.graph?.nodes?.find((node) => node.name === selectedStep.value) ?? null
 )
+
+const nodeItems = computed(() => {
+  const n = selectedNode.value
+  if (!n) return []
+  return [
+    { label: 'Type', value: n.type },
+    { label: 'Timeout', value: n.timeout ?? '—' },
+    { label: 'Retries', value: n.retry?.maxAttempts ?? 1 },
+  ]
+})
 </script>
 
 <template>
   <div>
-    <div class="section-title">workflows</div>
+    <PageHeader
+      eyebrow="Definitions"
+      title="Workflows"
+      subtitle="Registered workflow definitions and their step graphs."
+    />
 
-    <div v-if="loadError" class="empty" style="text-align: left; padding: 0;">{{ loadError }}</div>
-    <div v-else-if="!workflows.length" class="empty" style="text-align: left; padding: 0;">no workflows registered</div>
-    <div v-else class="workflow-layout">
-      <aside class="wf-sidebar">
-        <div
-          v-for="workflow in workflows"
-          :key="`${workflow.name}@${workflow.version}`"
-          class="card"
-          :class="{ active: `${workflow.name}@${workflow.version}` === selectedKey }"
-          style="cursor: pointer;"
-          @click="selectedKey = `${workflow.name}@${workflow.version}`"
-        >
-          <div class="card-header">
-            <span class="name">{{ workflow.name }}</span>
-            <span class="badge">v{{ workflow.version }}</span>
-          </div>
-          <div class="card-body">
-            <div class="kv-row">
-              <span class="kv-key">steps</span>
-              <span class="kv-value">{{ workflow.graph.nodes.length }}</span>
-            </div>
-            <div class="kv-row">
-              <span class="kv-key">start</span>
-              <span class="kv-value">{{ workflow.graph.start }}</span>
-            </div>
-          </div>
-        </div>
-      </aside>
+    <div class="page-body">
+      <EmptyState
+        v-if="loadError"
+        title="Could not load workflows"
+        :description="loadError"
+      />
+      <EmptyState
+        v-else-if="!workflows.length"
+        title="No workflows registered"
+        description="Workflow definitions will appear here once registered."
+      />
 
-      <section class="detail" v-if="selectedWorkflow">
-        <div class="headline">
-          <div>
-            <div class="headline-name">{{ selectedWorkflow.name }}</div>
-            <div class="headline-sub">version {{ selectedWorkflow.version }}</div>
-          </div>
-          <div class="headline-stats">
-            <span>{{ selectedWorkflow.graph.nodes.length }} steps</span>
-            <span>{{ selectedWorkflow.graph.edges.length }} edges</span>
-          </div>
-        </div>
+      <div v-else class="wf-layout">
+        <aside class="wf-list">
+          <button
+            v-for="workflow in workflows"
+            :key="`${workflow.name}@${workflow.version}`"
+            type="button"
+            class="wf-card"
+            :class="{ 'wf-card--active': `${workflow.name}@${workflow.version}` === selectedKey }"
+            @click="selectedKey = `${workflow.name}@${workflow.version}`"
+          >
+            <div class="wf-card__head">
+              <span class="wf-card__name">{{ workflow.name }}</span>
+              <Badge size="sm">v{{ workflow.version }}</Badge>
+            </div>
+            <div class="wf-card__meta">
+              <span>{{ workflow.graph.nodes.length }} steps</span>
+              <span class="wf-card__dot" />
+              <span>starts at {{ workflow.graph.start }}</span>
+            </div>
+          </button>
+        </aside>
 
-        <WorkflowGraph
-          :graph="selectedWorkflow.graph"
-          :selected-step="selectedStep"
-          @select-step="selectedStep = $event"
-        />
+        <section v-if="selectedWorkflow" class="wf-detail">
+          <Panel gradient elevated>
+            <template #header>
+              <h2 class="wf-title">{{ selectedWorkflow.name }}</h2>
+              <p class="wf-sub">Version {{ selectedWorkflow.version }}</p>
+            </template>
+            <template #aside>
+              <div class="wf-stats">
+                <span>{{ selectedWorkflow.graph.nodes.length }} steps</span>
+                <span class="wf-card__dot" />
+                <span>{{ selectedWorkflow.graph.edges.length }} edges</span>
+              </div>
+            </template>
+            <PanelSection flush>
+              <WorkflowGraph
+                :graph="selectedWorkflow.graph"
+                :selected-step="selectedStep"
+                @select-step="selectedStep = $event"
+              />
+            </PanelSection>
+          </Panel>
 
-        <div class="card" v-if="selectedNode">
-          <div class="card-header">
-            <span class="name">{{ selectedNode.name }}</span>
-          </div>
-          <div class="card-body">
-            <div class="kv-row">
-              <span class="kv-key">type</span>
-              <span class="kv-value">{{ selectedNode.type }}</span>
-            </div>
-            <div class="kv-row">
-              <span class="kv-key">timeout</span>
-              <span class="kv-value">{{ selectedNode.timeout ?? '-' }}</span>
-            </div>
-            <div class="kv-row">
-              <span class="kv-key">retries</span>
-              <span class="kv-value">{{ selectedNode.retry?.maxAttempts ?? 1 }}</span>
-            </div>
-            <p v-if="selectedNode.description" style="margin-top: 8px; color: #666; font-size: 11px;">{{ selectedNode.description }}</p>
-          </div>
-        </div>
-      </section>
+          <Panel v-if="selectedNode" :title="selectedNode.name">
+            <PanelSection label="Step definition">
+              <KeyValue layout="divided" boxed :items="nodeItems" />
+              <p v-if="selectedNode.description" class="wf-node-desc">{{ selectedNode.description }}</p>
+            </PanelSection>
+          </Panel>
+        </section>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.workflow-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
-.wf-sidebar { display: flex; flex-direction: column; gap: 8px; }
-.wf-sidebar .card.active { border-color: var(--accent); }
+.wf-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 940px) {
+  .wf-layout { grid-template-columns: 1fr; }
+}
 
-.detail { display: flex; flex-direction: column; gap: 16px; }
-.headline { display: flex; justify-content: space-between; align-items: flex-end; }
-.headline-name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
-.headline-sub { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
-.headline-stats { display: flex; gap: 10px; color: var(--text-muted); font-size: 11px; }
+.wf-list { display: flex; flex-direction: column; gap: 10px; }
+.wf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-comfy);
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.wf-card:hover { border-color: var(--ink-20); box-shadow: var(--shadow-soft); }
+.wf-card--active {
+  border-color: var(--lavender);
+  box-shadow: var(--shadow-soft);
+}
+.wf-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wf-card__name {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: var(--ink);
+}
+.wf-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-60);
+}
+.wf-card__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
+
+.wf-detail { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.wf-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  color: var(--ink);
+}
+.wf-sub { margin: 4px 0 0; font-size: 14px; color: var(--ink-60); }
+.wf-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-60);
+}
+.wf-node-desc {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-60);
+}
 </style>

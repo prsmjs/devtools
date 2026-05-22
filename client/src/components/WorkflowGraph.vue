@@ -201,8 +201,8 @@ function edgeClass(edge) {
     @pointerup="onPointerUp"
   >
     <div class="graph-controls">
-      <button @click.stop="resetView" title="reset view">1:1</button>
-      <button @click.stop="toggleFullscreen" title="fullscreen">{{ fullscreen ? 'exit' : 'expand' }}</button>
+      <button @click.stop="resetView" title="Reset view">1:1</button>
+      <button @click.stop="toggleFullscreen" title="Fullscreen">{{ fullscreen ? 'Exit' : 'Expand' }}</button>
     </div>
     <svg
       :viewBox="`0 0 ${layout.width} ${layout.height}`"
@@ -261,9 +261,11 @@ function edgeClass(edge) {
 
 <style scoped>
 .graph-shell {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  background:
+    radial-gradient(60% 60% at 12% 8%, rgba(189, 187, 255, 0.12), transparent 70%),
+    var(--paper);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-comfy);
   overflow: hidden;
   position: relative;
   cursor: grab;
@@ -285,32 +287,35 @@ function edgeClass(edge) {
   z-index: 1000;
   border-radius: 0;
   border: none;
-  background: var(--bg);
+  background: var(--paper);
 }
 
 .graph-controls {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
   z-index: 2;
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .graph-controls button {
-  padding: 4px 10px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: #888;
-  font-size: 11px;
-  font-family: inherit;
+  padding: 5px 12px;
+  background: var(--paper);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+  color: var(--ink-60);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
 .graph-controls button:hover {
-  background: var(--bg-hover);
-  color: #ccc;
+  background: var(--ink-04);
+  color: var(--ink);
+  border-color: var(--ink-20);
 }
 
 .graph {
@@ -325,22 +330,25 @@ function edgeClass(edge) {
 
 .edge {
   fill: none;
-  stroke: #232323;
-  stroke-width: 3;
+  stroke: var(--ink-20);
+  stroke-width: 2.5;
 }
 
 .edge-seen {
-  stroke: #3b3b3b;
+  stroke: var(--status-active);
+  opacity: 0.6;
 }
 
 .edge-active {
-  stroke: #8fb3ff;
+  stroke: var(--status-paused);
 }
 
 .edge-label {
-  fill: #4a4a4a;
-  font-size: 11px;
-  font-family: inherit;
+  fill: var(--ink-40);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .node {
@@ -348,47 +356,53 @@ function edgeClass(edge) {
 }
 
 .node rect {
-  fill: #151515;
-  stroke: #262626;
+  fill: var(--paper);
+  stroke: var(--ink-08);
   stroke-width: 1.5;
+  filter: drop-shadow(0 1px 3px rgba(1, 1, 32, 0.06));
 }
 
 .node.selected rect {
-  stroke: #6b7280;
+  stroke: var(--lavender);
+  stroke-width: 2.5;
 }
 
 .node.current rect,
 .node.running rect {
-  stroke: #5b8cff;
+  stroke: var(--status-paused);
+  stroke-width: 2;
 }
 
 .node.succeeded rect,
 .node.decision-success rect {
-  stroke: #3d8f63;
+  stroke: var(--status-active);
+  stroke-width: 2;
 }
 
 .node.failed rect {
-  stroke: #a14a4a;
+  stroke: var(--status-failed);
+  stroke-width: 2;
 }
-
-.node.activity .node-type { fill: #7aa2f7; }
-.node.decision .node-type { fill: #e0af68; }
-.node.succeed .node-type { fill: #73daca; }
-.node.fail .node-type { fill: #f7768e; }
 
 .node-name {
-  fill: var(--text-bright);
+  fill: var(--ink);
+  font-family: var(--display);
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.16px;
 }
 
-.node-type,
-.node-meta {
-  font-family: inherit;
-  font-size: 11px;
+.node-type {
+  fill: var(--ink-60);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .node-meta {
-  fill: #5f5f5f;
+  fill: var(--ink-40);
+  font-family: var(--mono);
+  font-size: 10px;
 }
 </style>

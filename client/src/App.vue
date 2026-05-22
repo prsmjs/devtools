@@ -1,75 +1,89 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { Icon } from '@iconify/vue'
 import { api } from './api.js'
+import AppLayout from './ui/components/AppLayout.vue'
+import SideNav from './ui/components/SideNav.vue'
 
 const config = ref({ queue: false, cron: false, limit: [], workflow: false, realtime: false, cells: [] })
 const route = useRoute()
+const router = useRouter()
 
 onMounted(async () => {
   const res = await fetch(api('/config'))
   if (res.ok) config.value = await res.json()
 })
 
-const tabs = computed(() => {
-  const t = [{ label: 'overview', path: '/' }]
-  if (config.value.realtime) t.push({ label: 'realtime', path: '/realtime' })
-  if (config.value.cells?.length) t.push({ label: 'cells', path: '/cells' })
-  if (config.value.queue) t.push({ label: 'queue', path: '/queue' })
-  if (config.value.cron) t.push({ label: 'cron', path: '/cron' })
-  if (config.value.limit.length) t.push({ label: 'limits', path: '/limits' })
+const navSections = computed(() => {
+  const items = [{ key: '/', label: 'Overview', icon: 'lucide:layout-dashboard' }]
+  if (config.value.realtime) items.push({ key: '/realtime', label: 'Realtime', icon: 'lucide:radio-tower' })
+  if (config.value.cells?.length) items.push({ key: '/cells', label: 'Cells', icon: 'lucide:network' })
+  if (config.value.queue) items.push({ key: '/queue', label: 'Queue', icon: 'lucide:layers' })
+  if (config.value.cron) items.push({ key: '/cron', label: 'Cron', icon: 'lucide:clock' })
+  if (config.value.limit?.length) items.push({ key: '/limits', label: 'Limits', icon: 'lucide:gauge' })
   if (config.value.workflow) {
-    t.push({ label: 'workflows', path: '/workflows' })
-    t.push({ label: 'executions', path: '/executions' })
+    items.push({ key: '/workflows', label: 'Workflows', icon: 'lucide:workflow' })
+    items.push({ key: '/executions', label: 'Executions', icon: 'lucide:history' })
   }
-  return t
+  return [{ items }]
 })
 
-function isActive(tab) {
-  if (tab.path === '/') return route.path === '/'
-  return route.path.startsWith(tab.path)
-}
+const activeKey = computed(() => {
+  const p = route.path
+  if (p === '/') return '/'
+  const match = navSections.value[0].items
+    .filter((i) => i.key !== '/')
+    .find((i) => p.startsWith(i.key))
+  return match ? match.key : '/'
+})
 
-const isRealtimeRoute = computed(() => route.path.startsWith('/realtime'))
-const isCellsRoute = computed(() => route.path.startsWith('/cells'))
-const isWideRoute = computed(() => isRealtimeRoute.value || isCellsRoute.value)
+function onSelect(item) {
+  if (route.path !== item.key) router.push(item.key)
+}
 </script>
 
 <template>
-  <div class="app">
-    <div class="top-bar">
-      <div class="top-bar-left">
-        <span class="logo">prsm <span>devtools</span></span>
-      </div>
-    </div>
-
-    <div class="nav-bar">
-      <router-link
-        v-for="tab in tabs"
-        :key="tab.path"
-        :to="tab.path"
-        :class="{ active: isActive(tab) }"
-      >
-        {{ tab.label }}
-      </router-link>
-    </div>
-
-    <template v-if="isRealtimeRoute">
-      <router-view :config="config" />
+  <AppLayout nav-width="232px">
+    <template #nav>
+      <SideNav :sections="navSections" :active-key="activeKey" @select="onSelect">
+        <template #header>
+          <div class="brand">
+            <span class="brand__mark">prsm</span>
+            <span class="brand__sub">devtools</span>
+          </div>
+        </template>
+        <template #icon="{ item }">
+          <Icon :icon="item.icon" class="nav-icon" />
+        </template>
+      </SideNav>
     </template>
-    <template v-else-if="isCellsRoute">
-      <div class="page-scroll">
-        <div class="page-content-wide">
-          <router-view :config="config" />
-        </div>
-      </div>
-    </template>
-    <template v-else>
-      <div class="page-scroll">
-        <div class="page-content">
-          <router-view :config="config" />
-        </div>
-      </div>
-    </template>
-  </div>
+    <router-view :config="config" />
+  </AppLayout>
 </template>
+
+<style scoped>
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 0 2px;
+}
+.brand__mark {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--ink);
+}
+.brand__sub {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-40);
+}
+.nav-icon {
+  font-size: 17px;
+}
+</style>

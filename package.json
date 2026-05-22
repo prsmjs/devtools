@@ -35,8 +35,10 @@
     "@prsm/cron": "^1.0.3",
     "@prsm/limit": "^1.1.1",
     "@prsm/queue": "^3.0.8",
+    "@prsm/workflow": "^3.0.0",
     "cors": "^2.8.6",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
   },
   "engines": {
     "node": ">=18"

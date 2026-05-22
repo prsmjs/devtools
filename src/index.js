@@ -123,8 +123,12 @@ export function prsmDevtools(options = {}) {
       if (!limiter) return res.status(404).json({ error: 'Limiter not found' })
       if (!limiter.peek) return res.status(400).json({ error: 'Limiter does not support peek' })
 
-      const result = await limiter.peek(req.params.key)
-      res.json(result)
+      try {
+        const result = await limiter.peek(req.params.key)
+        res.json(result)
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
     })
   }
 

@@ -8,17 +8,17 @@ const ready = ref(false)
 let initPromise = null
 
 const theme = {
-  name: 'prsm-devtools',
-  type: 'dark',
+  name: 'devtools-light',
+  type: 'light',
   bg: 'transparent',
-  fg: '#d4d4d4',
+  fg: '#000000',
   settings: [
-    { scope: ['string'], settings: { foreground: '#a5d6a7' } },
-    { scope: ['constant.numeric'], settings: { foreground: '#4dd0e1' } },
-    { scope: ['constant.language.boolean', 'constant.language'], settings: { foreground: '#ce93d8' } },
-    { scope: ['constant.language.null'], settings: { foreground: '#666666' } },
-    { scope: ['support.type.property-name'], settings: { foreground: '#b0b0b0' } },
-    { scope: ['punctuation'], settings: { foreground: '#555555' } },
+    { scope: ['string'], settings: { foreground: '#2c7a4e' } },
+    { scope: ['constant.numeric'], settings: { foreground: '#5b3fcb' } },
+    { scope: ['constant.language.boolean', 'constant.language'], settings: { foreground: '#b86b00' } },
+    { scope: ['constant.language.null'], settings: { foreground: 'rgba(0,0,0,0.4)' } },
+    { scope: ['support.type.property-name'], settings: { foreground: '#000000' } },
+    { scope: ['punctuation'], settings: { foreground: 'rgba(0,0,0,0.4)' } },
   ],
 }
 
@@ -45,7 +45,7 @@ export function useHighlight() {
     if (!highlighterRef.value) return escapeHtml(json)
     return highlighterRef.value.codeToHtml(json, {
       lang: 'json',
-      theme: 'prsm-devtools',
+      theme: 'devtools-light',
     })
   }
 

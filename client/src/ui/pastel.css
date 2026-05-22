@@ -1,0 +1,305 @@
+/*
+  pastel-components base styles
+  inspired by the Together AI design language: pastel gradients, sharp geometry,
+  midnight-blue dark sections, monospace labels, negative letter-spacing
+*/
+
+:root {
+  /* ink (text on light) */
+  --ink: #000000;
+  --ink-60: rgba(0, 0, 0, 0.6);
+  --ink-40: rgba(0, 0, 0, 0.4);
+  --ink-20: rgba(0, 0, 0, 0.2);
+  --ink-08: rgba(0, 0, 0, 0.08);
+  --ink-04: rgba(0, 0, 0, 0.04);
+
+  /* paper (light surfaces) */
+  --paper: #ffffff;
+
+  /* midnight (dark surfaces) */
+  --midnight: #010120;
+  --midnight-90: #0a0a2c;
+  --midnight-hover: #1a1a3a;
+  --midnight-active: #2a2a4a;
+  --paper-on-dark: #ffffff;
+  --paper-on-dark-60: rgba(255, 255, 255, 0.6);
+  --paper-on-dark-40: rgba(255, 255, 255, 0.4);
+  --paper-on-dark-12: rgba(255, 255, 255, 0.12);
+  --paper-on-dark-08: rgba(255, 255, 255, 0.08);
+
+  /* brand accents - illustrations only */
+  --magenta: #ef2cc1;
+  --orange: #fc4c02;
+  --lavender: #bdbbff;
+  --pink-soft: #ffd6f5;
+  --blue-soft: #d6e1ff;
+
+  /* shadows - dark-blue tinted */
+  --shadow-soft: 0 4px 10px rgba(1, 1, 32, 0.08);
+  --shadow-medium: 0 8px 24px rgba(1, 1, 32, 0.10);
+  --shadow-lift: 0 12px 32px rgba(1, 1, 32, 0.14);
+
+  /* focus rings */
+  --focus-ring: 0 0 0 3px rgba(1, 1, 32, 0.18);
+  --focus-ring-on-dark: 0 0 0 3px rgba(255, 255, 255, 0.30);
+  --focus-ring-danger: 0 0 0 3px rgba(179, 38, 30, 0.25);
+
+  /* geometry */
+  --radius-sharp: 4px;
+  --radius-comfy: 8px;
+
+  /* control heights - keep buttons + inputs + triggers aligned */
+  --control-h-sm: 28px;
+  --control-h: 34px;
+  --control-h-lg: 42px;
+
+  /* badge geometry - kept squarish per design spec (sharp 4px max) */
+  --badge-radius: 3px;
+
+  /* type stack - swap to "The Future" / "PP Neue Montreal Mono" when licensed */
+  --display: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* status palette */
+  --status-active: #2c7a4e;
+  --status-active-bg: #e7f4ec;
+  --status-warning: #b86b00;
+  --status-warning-bg: #fff1de;
+  --status-paused: #5b3fcb;
+  --status-paused-bg: #ece6ff;
+  --status-failed: #b3261e;
+  --status-failed-bg: #fce4e2;
+  --status-draft: #4a4a4a;
+  --status-draft-bg: #ececec;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  line-height: 1.30;
+  letter-spacing: -0.16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; padding: 0; }
+input, textarea, select { font-family: inherit; color: inherit; }
+
+h1, h2, h3, h4, h5 {
+  font-family: var(--display);
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+h1 { font-size: 40px; line-height: 1.10; letter-spacing: -0.96px; }
+h2 { font-size: 28px; line-height: 1.15; letter-spacing: -0.56px; }
+h3 { font-size: 22px; line-height: 1.18; letter-spacing: -0.32px; }
+h4 { font-size: 18px; line-height: 1.25; letter-spacing: -0.18px; }
+p { margin: 0; }
+
+/* type utilities */
+.pc-display { font-family: var(--display); font-weight: 500; letter-spacing: -0.03em; line-height: 1.05; }
+.pc-display--xl { font-size: 64px; letter-spacing: -1.92px; line-height: 1.00; }
+.pc-display--lg { font-size: 48px; letter-spacing: -1.20px; line-height: 1.05; }
+
+.pc-mono { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 500; }
+.pc-mono--md { font-size: 13px; letter-spacing: 0.05em; }
+.pc-mono--lg { font-size: 16px; letter-spacing: 0.04em; }
+
+.pc-muted { color: var(--ink-60); }
+.pc-muted-2 { color: var(--ink-40); }
+.pc-tabular { font-variant-numeric: tabular-nums; }
+
+/* surfaces */
+.pc-dark { background: var(--midnight); color: var(--paper-on-dark); }
+
+.pc-pastel-bg {
+  position: relative;
+  background:
+    radial-gradient(80% 60% at 18% 12%, rgba(239, 44, 193, 0.10), transparent 60%),
+    radial-gradient(70% 60% at 82% 22%, rgba(189, 187, 255, 0.40), transparent 65%),
+    radial-gradient(90% 70% at 50% 100%, rgba(214, 225, 255, 0.40), transparent 60%),
+    radial-gradient(50% 40% at 90% 80%, rgba(252, 76, 2, 0.06), transparent 60%),
+    var(--paper);
+}
+
+.pc-pastel-bg-soft {
+  background:
+    radial-gradient(60% 40% at 10% 0%, rgba(189, 187, 255, 0.25), transparent 60%),
+    radial-gradient(60% 40% at 100% 100%, rgba(255, 214, 245, 0.30), transparent 60%),
+    var(--paper);
+}
+
+/* scroll */
+.pc-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-20) transparent;
+}
+.pc-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.pc-scroll::-webkit-scrollbar-thumb { background: var(--ink-20); border-radius: 4px; }
+.pc-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* layout helpers */
+.pc-row { display: flex; gap: 12px; align-items: center; }
+.pc-col { display: flex; flex-direction: column; }
+.pc-gap-4 { gap: 4px; } .pc-gap-8 { gap: 8px; } .pc-gap-12 { gap: 12px; }
+.pc-gap-16 { gap: 16px; } .pc-gap-24 { gap: 24px; } .pc-gap-32 { gap: 32px; }
+.pc-grow { flex: 1 1 auto; min-width: 0; }
+.pc-shrink-0 { flex-shrink: 0; }
+.pc-spread { justify-content: space-between; }
+.pc-center { align-items: center; }
+.pc-start { align-items: flex-start; }
+
+.pc-divider { height: 1px; background: var(--ink-08); border: 0; margin: 0; }
+.pc-divider--dark { background: var(--paper-on-dark-12); }
+
+/* ---------- Date picker trigger (shared by DatePicker + DateRangePicker) ---------- */
+.pc-datepicker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+  padding: 0 12px;
+  height: var(--control-h);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  letter-spacing: -0.14px;
+  line-height: 1.2;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  min-width: 180px;
+  text-align: left;
+  box-sizing: border-box;
+}
+.pc-datepicker__trigger:hover:not(:disabled) { border-color: var(--ink-20); background: var(--ink-04); }
+.pc-datepicker__trigger:focus-visible { border-color: var(--midnight); box-shadow: var(--focus-ring); }
+.pc-datepicker__trigger:disabled { opacity: 0.5; cursor: not-allowed; }
+.pc-datepicker__trigger--empty .pc-datepicker__value { color: var(--ink-40); }
+.pc-datepicker__icon { display: inline-flex; color: var(--ink-60); flex-shrink: 0; }
+.pc-datepicker__value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Calendar (shared by DatePicker + DateRangePicker) ---------- */
+.pc-cal {
+  padding: 12px;
+  font-family: var(--display);
+  user-select: none;
+  min-width: 296px;
+}
+.pc-cal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 10px;
+  gap: 4px;
+}
+.pc-cal__heading {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.16px;
+  color: var(--ink);
+}
+.pc-cal__nav {
+  width: 28px; height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ink-60);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  outline: none;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  font-family: var(--display);
+}
+.pc-cal__nav:hover { background: var(--ink-04); color: var(--ink); }
+.pc-cal__nav:focus-visible { box-shadow: var(--focus-ring); }
+.pc-cal__grid { width: 100%; border-collapse: collapse; }
+.pc-cal__row { display: flex; }
+.pc-cal__weekday {
+  flex: 1;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink-40);
+  text-align: center;
+  padding: 8px 0;
+}
+.pc-cal__cell {
+  flex: 1;
+  padding: 2px;
+  min-width: 36px;
+}
+.pc-cal__day {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sharp);
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: -0.13px;
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.pc-cal__day:hover:not([data-disabled]) { background: var(--ink-04); }
+.pc-cal__day:focus-visible { box-shadow: var(--focus-ring); }
+.pc-cal__day[data-outside-view] { color: var(--ink-20); }
+.pc-cal__day[data-today] { font-weight: 500; box-shadow: inset 0 0 0 1px var(--ink-20); }
+.pc-cal__day[data-selected] {
+  background: var(--midnight);
+  color: var(--paper-on-dark);
+  box-shadow: none;
+}
+.pc-cal__day[data-selected]:hover { background: var(--midnight-hover); }
+.pc-cal__day[data-disabled] { color: var(--ink-20); cursor: not-allowed; }
+.pc-cal__day[data-highlighted] { background: var(--ink-04); }
+.pc-cal__day[data-selection-start],
+.pc-cal__day[data-selection-end] {
+  background: var(--midnight);
+  color: var(--paper-on-dark);
+  border-radius: var(--radius-sharp);
+}
+.pc-cal__day[data-highlighted-range],
+.pc-cal__day[data-highlighted]:not([data-selected]) { color: var(--ink); }
+.pc-cal__cell:has(.pc-cal__day[data-highlighted-range]) {
+  background: rgba(189, 187, 255, 0.20);
+}
+.pc-cal__cell:has(.pc-cal__day[data-highlighted-range]):first-child {
+  border-top-left-radius: var(--radius-sharp);
+  border-bottom-left-radius: var(--radius-sharp);
+}
+.pc-cal__cell:has(.pc-cal__day[data-highlighted-range]):last-child {
+  border-top-right-radius: var(--radius-sharp);
+  border-bottom-right-radius: var(--radius-sharp);
+}
+
+/* animation */
+.pc-fade-in { animation: pc-fadeIn 180ms ease-out both; }
+@keyframes pc-fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.pc-slide-up { animation: pc-slideUp 240ms ease-out both; }
+@keyframes pc-slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

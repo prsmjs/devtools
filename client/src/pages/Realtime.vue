@@ -1,74 +1,87 @@
 <template>
-  <div class="realtime-shell">
-    <div class="tab-bar">
-      <router-link
-        v-for="tab in tabs"
-        :key="tab.id"
-        :to="`/realtime/${tab.id}`"
-        class="tab"
-        :class="{ active: route.path === `/realtime/${tab.id}` }"
-      >
-        {{ tab.label }}<span class="count" v-if="tab.count !== undefined">{{ tab.count }}</span>
-      </router-link>
-      <div class="tab-bar-right">
-        <span class="pulse" :class="{ disconnected: !!error }"></span>
-        <span class="instance-id" v-if="state">instance {{ state.instanceId?.slice(0, 8) }}</span>
-      </div>
-    </div>
-
-    <div class="rt-main">
-      <div class="sidebar">
-        <ConnectionPicker
-          :connections="state?.connections || []"
-          :selected-id="selectedConnectionId"
-          @select="selectConnection"
-        />
-        <div class="sidebar-section" v-if="state?.exposed">
-          <div class="sidebar-header" style="cursor: pointer; user-select: none;" @click="showExposed = !showExposed">
-            <span>registered</span>
-            <span style="float: right; font-size: 9px;">{{ showExposed ? '-' : '+' }}</span>
-          </div>
-          <template v-if="showExposed">
-            <div
-              v-for="(patterns, type) in nonEmptyExposed"
-              :key="type"
-              class="exposed-row"
-            >
-              <span class="exposed-label">{{ formatExposedLabel(type) }}</span>
-              <span class="tag" v-for="p in patterns" :key="p">{{ p }}</span>
-            </div>
-          </template>
+  <div>
+    <PageHeader
+      eyebrow="WebSocket"
+      title="Realtime"
+      subtitle="Live inspector for rooms, channels, collections, records, and connection metadata."
+    >
+      <template #actions>
+        <div class="rt-status">
+          <span class="rt-pulse" :class="{ 'rt-pulse--down': !!error }" />
+          <span v-if="state" class="rt-instance">instance {{ state.instanceId?.slice(0, 8) }}</span>
         </div>
-      </div>
+      </template>
+    </PageHeader>
 
-      <div class="content">
-        <router-view
-          :rooms="filteredRooms"
-          :channels="filteredChannels"
-          :collections="filteredCollections"
-          :records="filteredRecords"
-          :detail="connectionDetail"
-          :connections="state?.connections || []"
-          :fetch-records="fetchCollectionRecords"
-          :watched-records="watchedRecords"
-          :watch-record="watchRecord"
-          :unwatch-record="unwatchRecord"
-          @navigate="navigateToConnection"
-        />
+    <div class="page-body">
+      <Tabs
+        :model-value="currentTab"
+        :tabs="tabs"
+        variant="underline"
+        @update:model-value="goTab"
+      />
+
+      <div class="rt-layout">
+        <aside class="rt-sidebar">
+          <Panel title="Connections">
+            <PanelSection flush>
+              <div class="rt-sidebar__body">
+                <ConnectionPicker
+                  :connections="state?.connections || []"
+                  :selected-id="selectedConnectionId"
+                  @select="selectConnection"
+                />
+              </div>
+            </PanelSection>
+          </Panel>
+
+          <Panel v-if="Object.keys(nonEmptyExposed).length" title="Registered">
+            <PanelSection flush>
+              <div class="rt-sidebar__body rt-exposed">
+                <div v-for="(patterns, type) in nonEmptyExposed" :key="type" class="rt-exposed__row">
+                  <span class="rt-exposed__label">{{ formatExposedLabel(type) }}</span>
+                  <div class="rt-exposed__tags">
+                    <Badge v-for="p in patterns" :key="p" size="sm">{{ p }}</Badge>
+                  </div>
+                </div>
+              </div>
+            </PanelSection>
+          </Panel>
+        </aside>
+
+        <div class="rt-content">
+          <router-view
+            :rooms="filteredRooms"
+            :channels="filteredChannels"
+            :collections="filteredCollections"
+            :records="filteredRecords"
+            :detail="connectionDetail"
+            :connections="state?.connections || []"
+            :fetch-records="fetchCollectionRecords"
+            :watched-records="watchedRecords"
+            :watch-record="watchRecord"
+            :unwatch-record="unwatchRecord"
+            @navigate="navigateToConnection"
+          />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRealtimeApi } from '../composables/useRealtimeApi.js'
 import ConnectionPicker from '../components/ConnectionPicker.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import PanelSection from '../ui/components/PanelSection.vue'
+import Tabs from '../ui/components/Tabs.vue'
+import Badge from '../ui/components/Badge.vue'
 
 const route = useRoute()
 const router = useRouter()
-const showExposed = ref(true)
 
 const exposedLabels = {
   channels: 'channels',
@@ -86,6 +99,10 @@ function formatExposedLabel(key) {
 function navigateToConnection(connId) {
   selectConnection(connId)
   router.push('/realtime/metadata')
+}
+
+function goTab(id) {
+  router.push(`/realtime/${id}`)
 }
 
 const {
@@ -146,36 +163,62 @@ const nonEmptyExposed = computed(() => {
 })
 
 const tabs = computed(() => [
-  { id: 'rooms', label: 'rooms', count: filteredRooms.value.length },
-  { id: 'channels', label: 'channels', count: Object.keys(filteredChannels.value).length },
-  { id: 'collections', label: 'collections', count: Object.keys(filteredCollections.value).length },
-  { id: 'records', label: 'records', count: Object.keys(filteredRecords.value).length },
-  { id: 'metadata', label: 'metadata' },
+  { value: 'rooms', label: 'Rooms', badge: filteredRooms.value.length },
+  { value: 'channels', label: 'Channels', badge: Object.keys(filteredChannels.value).length },
+  { value: 'collections', label: 'Collections', badge: Object.keys(filteredCollections.value).length },
+  { value: 'records', label: 'Records', badge: Object.keys(filteredRecords.value).length },
+  { value: 'metadata', label: 'Metadata' },
 ])
+
+const currentTab = computed(() => {
+  const seg = route.path.split('/')[2]
+  return seg || 'rooms'
+})
 </script>
 
 <style scoped>
-.realtime-shell {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-
-.rt-main {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-.tab-bar-right {
-  margin-left: auto;
+.rt-status {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
-.tab-bar a {
-  text-decoration: none;
+.rt-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-active);
 }
+.rt-pulse--down { background: var(--status-failed); }
+.rt-instance {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-60);
+}
+
+.rt-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 940px) {
+  .rt-layout { grid-template-columns: 1fr; }
+}
+
+.rt-sidebar { display: flex; flex-direction: column; gap: 20px; }
+.rt-sidebar__body { padding: 10px 12px; }
+
+.rt-exposed { display: flex; flex-direction: column; gap: 14px; }
+.rt-exposed__row { display: flex; flex-direction: column; gap: 6px; }
+.rt-exposed__label {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-40);
+}
+.rt-exposed__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.rt-content { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 </style>

@@ -1,24 +1,33 @@
 <template>
-  <div v-if="!rooms.length" class="empty">no rooms</div>
+  <EmptyState v-if="!rooms.length" title="No rooms" description="Active rooms and their members will appear here." />
   <template v-else>
-    <div class="view-hint">active rooms, their members, and each member's presence state</div>
-    <div v-for="room in rooms" :key="room.name" class="card">
-      <div class="card-header">
-        <span class="name">{{ room.name }}</span>
-        <span class="badge accent">{{ room.members.length }} {{ room.members.length === 1 ? 'member' : 'members' }}</span>
-      </div>
-      <div v-for="memberId in room.members" :key="memberId" class="member-row">
-        <span class="member-id conn-link" :title="memberId" @click="$emit('navigate', memberId)">{{ memberId.slice(0, 8) }}</span>
-        <span class="member-presence" v-if="room.presence[memberId]">
-          {{ formatPresence(room.presence[memberId]) }}
-        </span>
-        <span class="no-presence" v-else>no presence</span>
-      </div>
-    </div>
+    <p class="rt-hint">Active rooms, their members, and each member's presence state.</p>
+    <Panel v-for="room in rooms" :key="room.name">
+      <template #header>
+        <h3 class="rt-card-title">{{ room.name }}</h3>
+      </template>
+      <template #aside>
+        <Badge variant="active">{{ room.members.length }} {{ room.members.length === 1 ? 'member' : 'members' }}</Badge>
+      </template>
+      <PanelSection flush>
+        <div v-for="memberId in room.members" :key="memberId" class="rt-row">
+          <button type="button" class="rt-conn" :title="memberId" @click="$emit('navigate', memberId)">
+            {{ memberId.slice(0, 8) }}
+          </button>
+          <span v-if="room.presence[memberId]" class="rt-presence">{{ formatPresence(room.presence[memberId]) }}</span>
+          <span v-else class="rt-presence rt-presence--none">no presence</span>
+        </div>
+      </PanelSection>
+    </Panel>
   </template>
 </template>
 
 <script setup>
+import Panel from '../../ui/components/Panel.vue'
+import PanelSection from '../../ui/components/PanelSection.vue'
+import Badge from '../../ui/components/Badge.vue'
+import EmptyState from '../../ui/components/EmptyState.vue'
+
 defineProps({
   rooms: { type: Array, default: () => [] },
 })
@@ -37,3 +46,43 @@ function formatPresence(state) {
   return String(state)
 }
 </script>
+
+<style scoped>
+.rt-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-60);
+}
+.rt-card-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.rt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--ink-08);
+}
+.rt-row:first-child { border-top: 0; }
+.rt-conn {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  border-bottom: 1px solid var(--ink-20);
+  padding-bottom: 1px;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.rt-conn:hover { border-bottom-color: var(--ink); }
+.rt-presence {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--status-active);
+}
+.rt-presence--none { color: var(--ink-40); }
+</style>

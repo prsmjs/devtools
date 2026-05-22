@@ -2,6 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api.js'
 import { useSSE } from '../sse.js'
+import PageHeader from '../ui/components/PageHeader.vue'
+import Panel from '../ui/components/Panel.vue'
+import Card from '../ui/components/Card.vue'
+import Stat from '../ui/components/Stat.vue'
+import Badge from '../ui/components/Badge.vue'
+import EmptyState from '../ui/components/EmptyState.vue'
 
 const inFlight = ref(0)
 const events = useSSE()
@@ -38,70 +44,94 @@ const trackCounts = computed(() => {
   }
   return { completed: c, failed: f, retried: r }
 })
+
+const ACTION_VARIANT = {
+  complete: 'active',
+  failed: 'failed',
+  retry: 'warning',
+  new: 'default',
+  drain: 'default',
+}
 </script>
 
 <template>
   <div>
-    <div class="section-title">queue</div>
+    <PageHeader
+      eyebrow="Job queue"
+      title="Queue"
+      subtitle="In-flight work right now, plus completed, failed, and retried counts for this session."
+    />
 
-    <div class="gauges">
-      <div class="gauge">
-        <span class="gauge-value" :class="{ lit: inFlight > 0 }">{{ inFlight }}</span>
-        <span class="gauge-label">in-flight</span>
-      </div>
-      <div class="gauge">
-        <span class="gauge-value">{{ trackCounts.completed }}</span>
-        <span class="gauge-label">completed</span>
-      </div>
-      <div class="gauge">
-        <span class="gauge-value" :class="{ warn: trackCounts.failed > 0 }">{{ trackCounts.failed }}</span>
-        <span class="gauge-label">failed</span>
-      </div>
-      <div class="gauge">
-        <span class="gauge-value">{{ trackCounts.retried }}</span>
-        <span class="gauge-label">retried</span>
-      </div>
-    </div>
-
-    <p class="session-note">counts since page load</p>
-
-    <section>
-      <div class="section-title">events</div>
-      <div class="stream" v-if="queueEvents.length">
-        <div v-for="(evt, i) in queueEvents" :key="i" class="event-row">
-          <span class="event-action" :class="evt.type.split(':')[1]">{{ evt.type.split(':')[1] }}</span>
-          <span class="event-data">{{ JSON.stringify(evt.data) }}</span>
-          <span class="event-time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
+    <div class="page-body">
+      <section class="page-section">
+        <div class="stats-grid">
+          <Card padded elevated>
+            <Stat label="In-flight" :value="inFlight" caption="jobs running right now" size="lg" />
+          </Card>
+          <Card padded elevated>
+            <Stat label="Completed" :value="trackCounts.completed" caption="since page load" size="lg" />
+          </Card>
+          <Card padded elevated>
+            <Stat label="Failed" :value="trackCounts.failed" caption="since page load" size="lg" />
+          </Card>
+          <Card padded elevated>
+            <Stat label="Retried" :value="trackCounts.retried" caption="since page load" size="lg" />
+          </Card>
         </div>
-      </div>
-      <p v-else class="empty" style="text-align: left; padding: 0;">no queue events yet</p>
-    </section>
+      </section>
+
+      <section class="page-section">
+        <Panel title="Events" description="Queue lifecycle events, newest first.">
+          <div v-if="queueEvents.length" class="stream">
+            <div v-for="(evt, i) in queueEvents" :key="i" class="event">
+              <Badge :variant="ACTION_VARIANT[evt.type.split(':')[1]] || 'default'" size="sm">
+                {{ evt.type.split(':')[1] }}
+              </Badge>
+              <span class="event__data">{{ JSON.stringify(evt.data) }}</span>
+              <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
+            </div>
+          </div>
+          <EmptyState v-else title="No queue events yet" description="Job activity will appear here as it happens." />
+        </Panel>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.gauges { display: flex; gap: 12px; margin-bottom: 8px; }
-.gauge { flex: 1; padding: 16px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; }
-.gauge-value { display: block; font-size: 28px; font-weight: 600; color: var(--text-muted); }
-.gauge-value.lit { color: var(--color-blue); }
-.gauge-value.warn { color: var(--color-red); }
-.gauge-label { display: block; font-size: 10px; color: var(--text-muted); margin-top: 4px; letter-spacing: 0.3px; text-transform: uppercase; }
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 880px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
-.session-note { font-size: 10px; color: #333; margin-bottom: 24px; }
-
-section { margin-top: 24px; }
-
-.stream { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; max-height: 400px; overflow-y: auto; }
-.event-row { display: flex; gap: 0; align-items: center; border-bottom: 1px solid var(--bg-raised); font-size: 11px; }
-.event-row:last-child { border-bottom: none; }
-
-.event-action { width: 72px; padding: 6px 10px; color: var(--text-muted); flex-shrink: 0; }
-.event-action.complete { color: var(--color-green); }
-.event-action.failed { color: var(--color-red); }
-.event-action.retry { color: var(--color-yellow); }
-.event-action.new { color: var(--text-muted); }
-.event-action.drain { color: #666; }
-
-.event-data { flex: 1; padding: 6px 8px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.event-time { width: 80px; padding: 6px 8px; color: #333; text-align: right; flex-shrink: 0; }
+.stream { max-height: 480px; overflow-y: auto; }
+.event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 24px;
+  border-top: 1px solid var(--ink-08);
+  font-size: 13px;
+}
+.event:first-child { border-top: 0; }
+.event__data {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-60);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-40);
+}
 </style>
