@@ -4,7 +4,8 @@ import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
-import Table from '../ui/components/Table.vue'
+import Card from '../ui/components/Card.vue'
+import Stat from '../ui/components/Stat.vue'
 import Badge from '../ui/components/Badge.vue'
 import Button from '../ui/components/Button.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
@@ -40,21 +41,6 @@ onUnmounted(() => {
 const cronEvents = computed(() =>
   events.value.filter((e) => e.type.startsWith('cron:')).slice(0, 100),
 )
-
-const jobRows = computed(() =>
-  jobs.value.map((job) => ({
-    name: job.name,
-    next: job.nextFireTime ? new Date(job.nextFireTime).toLocaleTimeString() : '—',
-    nextFireTime: job.nextFireTime,
-  }))
-)
-
-const columns = [
-  { key: 'name', label: 'Job', primary: true },
-  { key: 'next', label: 'Next fire', align: 'right', mono: true },
-  { key: 'in', label: 'In', align: 'right' },
-  { key: 'run', label: '', align: 'right' },
-]
 
 function timeUntil(date) {
   if (!date) return '—'
@@ -103,24 +89,35 @@ async function runJob(name) {
 
     <div class="page-body">
       <section class="page-section">
-        <Panel title="Registered jobs">
-          <Table v-if="jobRows.length" :columns="columns" :rows="jobRows" row-key="name">
-            <template #cell-in="{ row }">
-              <span class="countdown" :class="{ 'countdown--soon': isSoon(row.nextFireTime) }">
-                {{ timeUntil(row.nextFireTime) }}
-              </span>
-            </template>
-            <template #cell-run="{ row }">
+        <div v-if="jobs.length" class="cron-grid">
+          <Card
+            v-for="job in jobs"
+            :key="job.name"
+            padded
+            elevated
+            class="cron-card"
+            :class="{ 'cron-card--soon': isSoon(job.nextFireTime) }"
+          >
+            <div class="cron-card__head">
+              <span class="cron-card__name">{{ job.name }}</span>
               <Button
                 size="sm"
                 variant="ghost"
                 icon="lucide:play"
-                :loading="running === row.name"
-                @click="runJob(row.name)"
+                :loading="running === job.name"
+                @click="runJob(job.name)"
               >Run</Button>
-            </template>
-          </Table>
-          <EmptyState v-else title="No cron jobs registered" description="Scheduled jobs will appear here once registered." />
+            </div>
+            <Stat
+              label="Next fire"
+              :value="timeUntil(job.nextFireTime)"
+              :caption="job.nextFireTime ? `at ${new Date(job.nextFireTime).toLocaleTimeString()}` : 'no schedule'"
+              size="md"
+            />
+          </Card>
+        </div>
+        <Panel v-else>
+          <EmptyState title="No cron jobs registered" description="Scheduled jobs will appear here once registered." />
         </Panel>
       </section>
 
@@ -143,13 +140,35 @@ async function runJob(name) {
 </template>
 
 <style scoped>
-.countdown {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--ink-60);
-  font-variant-numeric: tabular-nums;
+.cron-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
+  gap: 16px;
 }
-.countdown--soon { color: var(--status-paused); font-weight: 500; }
+
+.cron-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cron-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cron-card__name {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cron-card--soon :deep(.pc-stat__value) {
+  color: var(--status-paused);
+}
 
 .stream { max-height: 480px; overflow-y: auto; }
 .event {
