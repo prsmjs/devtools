@@ -11,7 +11,6 @@ const traces = ref([])
 const selectedId = ref(null)
 const detail = ref(null)
 const selectedSpanId = ref(null)
-const selectedEventIdx = ref(null)
 const live = ref(true)
 const searchId = ref('')
 const filterStatus = ref('')
@@ -138,11 +137,6 @@ const waterfall = computed(() => {
 function eventLeftPct(event, trace) {
   const total = Math.max(0.001, trace.endedAt - trace.startedAt)
   return Math.max(0, Math.min(100, ((event.time - trace.startedAt) / total) * 100))
-}
-
-function selectEvent(spanId, idx) {
-  selectedSpanId.value = spanId
-  selectedEventIdx.value = idx
 }
 
 function subsystemFromName(name) {
@@ -318,15 +312,13 @@ watch([filterStatus, filterService], () => { loadTraces() })
                     :class="['tr-bar', `tr-bar--${subsystemFromName(row.span.name)}`]"
                     :style="{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }"
                   ></div>
-                  <button
+                  <span
                     v-for="(ev, idx) in row.span.events || []"
                     :key="idx"
-                    type="button"
                     class="tr-event"
                     :style="{ left: `${eventLeftPct(ev, detail)}%` }"
                     :title="`${ev.name}${Object.keys(ev.attributes || {}).length ? ' · ' + JSON.stringify(ev.attributes) : ''}`"
-                    @click.stop="selectEvent(row.span.spanId, idx)"
-                  ></button>
+                  ></span>
                 </div>
                 <div class="tr-row__dur">{{ formatDur(row.span.durationMs) }}</div>
               </div>
@@ -361,8 +353,7 @@ watch([filterStatus, filterService], () => { loadTraces() })
                 <li
                   v-for="(ev, idx) in selectedSpan.events"
                   :key="idx"
-                  :class="['tr-event-row', { 'tr-event-row--active': selectedEventIdx === idx }]"
-                  @click="selectedEventIdx = idx"
+                  class="tr-event-row"
                 >
                   <div class="tr-event-row__head">
                     <span class="tr-event-row__name">{{ ev.name }}</span>
@@ -625,12 +616,10 @@ watch([filterStatus, filterService], () => { loadTraces() })
   border-radius: 50%;
   background: #facc15;
   border: 1.5px solid var(--paper, #fff);
-  padding: 0;
-  cursor: pointer;
+  pointer-events: auto;
   z-index: 2;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
-.tr-event:hover { transform: translate(-50%, -50%) scale(1.25); }
 .tr-row--error .tr-bar { outline: 2px solid var(--status-failed); outline-offset: 1px; }
 .tr-row--error .tr-row__name { color: var(--status-failed); }
 .tr-row__dur {
@@ -675,11 +664,7 @@ watch([filterStatus, filterService], () => { loadTraces() })
   padding: 8px 10px;
   background: var(--ink-04);
   border-radius: var(--radius-sharp);
-  cursor: pointer;
-  transition: background 100ms ease;
 }
-.tr-event-row:hover { background: var(--ink-08); }
-.tr-event-row--active { background: var(--ink-08); outline: 1px solid #facc15; }
 .tr-event-row__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .tr-event-row__name { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
 .tr-event-row__offset { font-family: var(--mono); font-size: 10px; color: var(--ink-40); }
