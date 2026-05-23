@@ -16,6 +16,8 @@ export function useSSE() {
       'workflow:step:started', 'workflow:step:succeeded', 'workflow:step:routed',
       'workflow:step:retry', 'workflow:step:failed',
       'cells:change',
+      'cache:hit', 'cache:miss', 'cache:set', 'cache:del', 'cache:invalidate', 'cache:refresh',
+      'cache:stampede:lead', 'cache:stampede:wait', 'cache:stampede:result', 'cache:stampede:timeout',
     ]) {
       source.addEventListener(type, (e) => {
         const data = JSON.parse(e.data)

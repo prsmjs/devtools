@@ -29,8 +29,42 @@ function patternToString(p) {
  */
 export function prsmDevtools(options = {}) {
   const router = Router()
-  const { queue, cron, limit, workflow, realtime, lock, cache } = options
+  const { queue, cron, limit, workflow, realtime, lock, cache, tracer } = options
+  const traceLimit = options.traceBufferSize ?? 1000
   const connectionDisplay = typeof options.connectionDisplay === 'function' ? options.connectionDisplay : null
+
+  const traceMap = new Map()
+  const traceOrder = []
+  function captureSpan(span) {
+    let trace = traceMap.get(span.traceId)
+    if (!trace) {
+      trace = {
+        traceId: span.traceId,
+        spans: [],
+        firstStartedAt: span.startedAt,
+        lastEndedAt: span.endedAt,
+        services: new Set(),
+        status: 'ok',
+        rootName: null,
+        rootService: null,
+      }
+      traceMap.set(span.traceId, trace)
+      traceOrder.push(span.traceId)
+      while (traceOrder.length > traceLimit) {
+        const evictId = traceOrder.shift()
+        traceMap.delete(evictId)
+      }
+    }
+    trace.spans.push(span)
+    trace.firstStartedAt = Math.min(trace.firstStartedAt, span.startedAt)
+    trace.lastEndedAt = Math.max(trace.lastEndedAt, span.endedAt)
+    trace.services.add(span.service)
+    if (span.status === 'error') trace.status = 'error'
+    if (!span.parentSpanId) {
+      trace.rootName = span.name
+      trace.rootService = span.service
+    }
+  }
 
   function displayFor(metadata) {
     if (!connectionDisplay) return { label: null, sublabel: null }
@@ -52,6 +86,15 @@ export function prsmDevtools(options = {}) {
     for (const res of sseClients) {
       res.write(msg)
     }
+  }
+
+  if (tracer) {
+    tracer.onSpan((span) => {
+      try {
+        captureSpan(span)
+        broadcast('trace:span', span)
+      } catch {}
+    })
   }
 
   if (queue) {
@@ -109,8 +152,55 @@ export function prsmDevtools(options = {}) {
       cells: cellGraphs ? Object.keys(cellGraphs) : [],
       lock: lock ? Object.keys(lock) : [],
       cache: cache ? Object.keys(cache) : [],
+      trace: !!tracer,
     })
   })
+
+  if (tracer) {
+    function summarizeTrace(trace) {
+      const sorted = trace.spans.slice().sort((a, b) => a.startedAt - b.startedAt)
+      const root = sorted.find((s) => !s.parentSpanId) ?? sorted[0]
+      return {
+        traceId: trace.traceId,
+        startedAt: trace.firstStartedAt,
+        endedAt: trace.lastEndedAt,
+        durationMs: trace.lastEndedAt - trace.firstStartedAt,
+        spanCount: trace.spans.length,
+        services: [...trace.services],
+        status: trace.status,
+        rootName: root?.name ?? trace.rootName ?? null,
+        rootService: root?.service ?? trace.rootService ?? null,
+      }
+    }
+
+    router.get('/api/traces', (req, res) => {
+      const limit = Math.min(Number(req.query.limit) || 100, 500)
+      const since = Number(req.query.since) || 0
+      const status = req.query.status
+      const service = req.query.service
+      const list = []
+      for (let i = traceOrder.length - 1; i >= 0; i--) {
+        const trace = traceMap.get(traceOrder[i])
+        if (!trace) continue
+        if (trace.lastEndedAt < since) continue
+        if (status && trace.status !== status) continue
+        if (service && !trace.services.has(service)) continue
+        list.push(summarizeTrace(trace))
+        if (list.length >= limit) break
+      }
+      res.json({ traces: list })
+    })
+
+    router.get('/api/traces/:id', (req, res) => {
+      const trace = traceMap.get(req.params.id)
+      if (!trace) return res.status(404).json({ error: 'trace not found' })
+      const spans = trace.spans.slice().sort((a, b) => a.startedAt - b.startedAt)
+      res.json({
+        ...summarizeTrace(trace),
+        spans,
+      })
+    })
+  }
 
   if (cache) {
     router.get('/api/cache', (_req, res) => {

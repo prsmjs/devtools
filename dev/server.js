@@ -11,16 +11,21 @@ import { postgresDriver } from '@prsm/workflow/postgres'
 import { RealtimeServer } from '@prsm/realtime'
 import { RealtimeClient } from '@prsm/realtime/client'
 import { createCache } from '@prsm/cache'
+import { createTracer } from '@prsm/trace'
 import { prsmDevtools } from '../src/index.js'
+
+const tracer = createTracer({ service: 'devtools-dev' })
 
 const app = express()
 app.use(cors())
+app.use(tracer.express())
 
 const queue = new Queue({
   concurrency: 3,
   maxRetries: 2,
   timeout: '10s',
   groups: { concurrency: 1 },
+  tracer,
 })
 
 queue.process(async (payload) => {
@@ -29,7 +34,7 @@ queue.process(async (payload) => {
   return { processed: true }
 })
 
-const cron = new Cron()
+const cron = new Cron({ tracer })
 
 cron.add('heartbeat', '5s', async () => {
   return { ts: Date.now() }
@@ -39,10 +44,10 @@ cron.add('cleanup', '*/1 * * * *', async () => {
   return { cleaned: Math.floor(Math.random() * 10) }
 })
 
-const apiLimiter = slidingWindow({ max: 100, window: '1m' })
-const uploadLimiter = tokenBucket({ capacity: 10, refillRate: 2, refillInterval: '1s' })
+const apiLimiter = slidingWindow({ max: 100, window: '1m', tracer })
+const uploadLimiter = tokenBucket({ capacity: 10, refillRate: 2, refillInterval: '1s', tracer })
 
-const g = createGraph({ prefix: 'portfolio:' })
+const g = createGraph({ prefix: 'portfolio:', tracer })
 
 const btc = g.cell('btc-price', 67000, {
   history: true,
@@ -117,7 +122,7 @@ setInterval(() => {
   }
 }, 7000)
 
-const health = createGraph({ prefix: 'health:' })
+const health = createGraph({ prefix: 'health:', tracer })
 
 health.cell('cpu', 12, { history: true, source: { type: 'metric', interval: '4s' }, metadata: { description: 'CPU usage %' } })
 health.cell('memory', 48, { history: true, source: { type: 'metric', interval: '4s' }, metadata: { description: 'Memory usage %' } })
@@ -271,6 +276,7 @@ const workflow = new WorkflowEngine({
   }),
   owner: 'devtools-dev',
   leaseMs: '30s',
+  tracer,
 })
 workflow.register(enrichWorkflow)
 workflow.register(ticketWorkflow)
@@ -293,12 +299,13 @@ setInterval(async () => {
   }
 }, 6000)
 
-const jobLock = mutex({ redis: { host: '127.0.0.1', port: 6379 }, prefix: 'devtools-demo:mutex:' })
+const jobLock = mutex({ redis: { host: '127.0.0.1', port: 6379 }, prefix: 'devtools-demo:mutex:', tracer })
 const workerSlots = semaphore({
   max: 6,
   ttl: '40s',
   redis: { host: '127.0.0.1', port: 6379 },
   prefix: 'devtools-demo:sem:',
+  tracer,
 })
 
 const JOB_KEYS = ['report-generation', 'nightly-data-sync', 'cache-rebuild', 'index-compaction', 'invoice-batch']
@@ -345,6 +352,7 @@ setInterval(() => {
 
 const realtime = new RealtimeServer({
   redis: { host: '127.0.0.1', port: 6379 },
+  tracer,
   authenticateConnection: (req) => {
     const url = new URL(req.url, 'http://localhost')
     const user = url.searchParams.get('user') ?? `guest-${Math.random().toString(36).slice(2, 6)}`
@@ -445,12 +453,14 @@ const userCache = createCache({
   redis: { host: '127.0.0.1', port: 6379 },
   prefix: 'demo-cache:users:',
   defaultTtl: '30s',
+  tracer,
 })
 const trendingCache = createCache({
   redis: { host: '127.0.0.1', port: 6379 },
   prefix: 'demo-cache:trending:',
   defaultTtl: '5s',
   defaultStaleWhile: '20s',
+  tracer,
 })
 await userCache.ready()
 await trendingCache.ready()
@@ -508,6 +518,7 @@ app.use(
     lock: { jobs: jobLock, 'worker-slots': workerSlots },
     realtime,
     cache: { users: userCache, trending: trendingCache },
+    tracer,
     connectionDisplay: (metadata) => ({
       label: metadata?.user,
       sublabel: metadata?.role,
@@ -542,6 +553,29 @@ app.post('/test/hit-limit', async (_req, res) => {
   const result = await apiLimiter.hit('test-key')
   res.json(result)
 })
+
+app.post('/test/order', async (_req, res) => {
+  const userId = String(1 + Math.floor(Math.random() * 5))
+  const rateOk = await apiLimiter.hit(`order:${userId}`)
+  if (!rateOk.allowed) return res.status(429).json({ error: 'rate limited' })
+  const user = await userCache.fetch(`user:${userId}`, async () => {
+    await delay(60 + Math.random() * 80)
+    return FAKE_USERS[userId] ?? null
+  }, { ttl: '30s' })
+  if (!user) return res.status(404).json({ error: 'user not found' })
+  const trending = await trendingCache.fetch('global', async () => {
+    await delay(120)
+    return { tags: ['ai', 'redis'], at: Date.now() }
+  }, { ttl: '5s', staleWhile: '20s' })
+  const jobId = await queue.push({ kind: 'order', userId, trending: trending.tags })
+  await realtime.writeChannel('notifications', { level: 'info', text: `order placed for ${user.name}`, ts: Date.now() }).catch(() => {})
+  res.json({ ok: true, userId, jobId })
+})
+
+setInterval(async () => {
+  const url = 'http://127.0.0.1:3000/test/order'
+  try { await fetch(url, { method: 'POST' }) } catch {}
+}, 2500)
 
 const port = 3000
 
