@@ -2,6 +2,7 @@ import { Router, static as serveStatic, json } from 'express'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
+import { createClient } from 'redis'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const clientDir = resolve(__dirname, '..', 'dist', 'client')
@@ -30,11 +31,114 @@ function patternToString(p) {
 export function prsmDevtools(options = {}) {
   const router = Router()
   const { queue, cron, limit, workflow, realtime, lock, cache, tracer } = options
-  const traceLimit = options.traceBufferSize ?? 1000
+  const traceLimit = options.traceBufferSize ?? 50000
+  const traceRetentionMs = options.traceRetentionMs ?? 60 * 60 * 1000
+
+  let traceRedis = null
+  if (options.traceStore) {
+    const ts = options.traceStore
+    traceRedis = typeof ts.set === 'function' && typeof ts.get === 'function' ? ts : createClient(ts)
+    if (!traceRedis.isOpen) {
+      traceRedis.on?.('error', () => {})
+      traceRedis.connect().catch(() => {})
+    }
+  }
+  const TRACE_KEY = (id) => `devtools:trace:${id}`
+  const TRACE_INDEX = 'devtools:trace-index'
+
+  async function persistTrace(trace) {
+    if (!traceRedis) return
+    try {
+      const ttlSec = Math.max(60, Math.floor(traceRetentionMs / 1000))
+      const payload = JSON.stringify({
+        traceId: trace.traceId,
+        spans: trace.spans,
+        firstStartedAt: trace.firstStartedAt,
+        lastEndedAt: trace.lastEndedAt,
+        services: [...trace.services],
+        status: trace.status,
+        rootName: trace.rootName,
+        rootService: trace.rootService,
+      })
+      await traceRedis.set(TRACE_KEY(trace.traceId), payload, { EX: ttlSec })
+      await traceRedis.zAdd(TRACE_INDEX, { score: trace.lastEndedAt, value: trace.traceId })
+    } catch {}
+  }
+
+  async function loadTraceFromStore(id) {
+    if (!traceRedis) return null
+    try {
+      const raw = await traceRedis.get(TRACE_KEY(id))
+      if (!raw) return null
+      const data = JSON.parse(raw)
+      return {
+        traceId: data.traceId,
+        spans: data.spans,
+        firstStartedAt: data.firstStartedAt,
+        lastEndedAt: data.lastEndedAt,
+        services: new Set(data.services),
+        status: data.status,
+        rootName: data.rootName,
+        rootService: data.rootService,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  async function listTraceIdsFromStore(limit, sinceMs) {
+    if (!traceRedis) return []
+    try {
+      const ids = await traceRedis.zRange(TRACE_INDEX, sinceMs ?? 0, '+inf', { BY: 'SCORE', REV: true, LIMIT: { offset: 0, count: limit } })
+      return ids ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async function pruneStoreIndex() {
+    if (!traceRedis || traceRetentionMs <= 0) return
+    try {
+      const cutoff = Date.now() - traceRetentionMs
+      await traceRedis.zRemRangeByScore(TRACE_INDEX, 0, cutoff)
+    } catch {}
+  }
   const connectionDisplay = typeof options.connectionDisplay === 'function' ? options.connectionDisplay : null
 
   const traceMap = new Map()
   const traceOrder = []
+
+  function sweepStaleTraces() {
+    if (traceRetentionMs <= 0) return
+    const cutoff = Date.now() - traceRetentionMs
+    let removed = 0
+    for (let i = 0; i < traceOrder.length; i++) {
+      const id = traceOrder[i]
+      const trace = traceMap.get(id)
+      if (trace && trace.lastEndedAt < cutoff) {
+        traceMap.delete(id)
+        traceOrder[i] = null
+        removed++
+      } else if (trace) {
+        break
+      }
+    }
+    if (removed > 0) {
+      const filtered = traceOrder.filter((x) => x !== null)
+      traceOrder.length = 0
+      traceOrder.push(...filtered)
+    }
+  }
+
+  let sweepHandle = null
+  if (tracer && traceRetentionMs > 0) {
+    sweepHandle = setInterval(() => {
+      sweepStaleTraces()
+      pruneStoreIndex().catch(() => {})
+    }, 30_000)
+    if (typeof sweepHandle.unref === 'function') sweepHandle.unref()
+  }
+
   function captureSpan(span) {
     let trace = traceMap.get(span.traceId)
     if (!trace) {
@@ -64,6 +168,7 @@ export function prsmDevtools(options = {}) {
       trace.rootName = span.name
       trace.rootService = span.service
     }
+    if (traceRedis) persistTrace(trace).catch(() => {})
   }
 
   function displayFor(metadata) {
@@ -173,12 +278,14 @@ export function prsmDevtools(options = {}) {
       }
     }
 
-    router.get('/api/traces', (req, res) => {
+    router.get('/api/traces', async (req, res) => {
       const limit = Math.min(Number(req.query.limit) || 100, 500)
       const since = Number(req.query.since) || 0
       const status = req.query.status
       const service = req.query.service
+      const seen = new Set()
       const list = []
+
       for (let i = traceOrder.length - 1; i >= 0; i--) {
         const trace = traceMap.get(traceOrder[i])
         if (!trace) continue
@@ -186,13 +293,30 @@ export function prsmDevtools(options = {}) {
         if (status && trace.status !== status) continue
         if (service && !trace.services.has(service)) continue
         list.push(summarizeTrace(trace))
+        seen.add(trace.traceId)
         if (list.length >= limit) break
       }
+
+      if (traceRedis && list.length < limit) {
+        const ids = await listTraceIdsFromStore(limit * 2, since)
+        for (const id of ids) {
+          if (seen.has(id)) continue
+          const trace = await loadTraceFromStore(id)
+          if (!trace) continue
+          if (status && trace.status !== status) continue
+          if (service && !trace.services.has(service)) continue
+          list.push(summarizeTrace(trace))
+          seen.add(id)
+          if (list.length >= limit) break
+        }
+      }
+
       res.json({ traces: list })
     })
 
-    router.get('/api/traces/:id', (req, res) => {
-      const trace = traceMap.get(req.params.id)
+    router.get('/api/traces/:id', async (req, res) => {
+      let trace = traceMap.get(req.params.id)
+      if (!trace && traceRedis) trace = await loadTraceFromStore(req.params.id)
       if (!trace) return res.status(404).json({ error: 'trace not found' })
       const spans = trace.spans.slice().sort((a, b) => a.startedAt - b.startedAt)
       res.json({

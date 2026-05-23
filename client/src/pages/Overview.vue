@@ -1,9 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useSSE } from '../sse.js'
-import PastelBg from '../ui/components/PastelBg.vue'
-import Display from '../ui/components/Display.vue'
-import SectionLabel from '../ui/components/SectionLabel.vue'
+import PageHeader from '../ui/components/PageHeader.vue'
 import ToggleGroup from '../ui/components/ToggleGroup.vue'
 import Panel from '../ui/components/Panel.vue'
 import Badge from '../ui/components/Badge.vue'
@@ -76,12 +74,11 @@ const filteredEvents = computed(() =>
 
 <template>
   <div>
-    <PastelBg class="hero">
-      <div class="hero__inner">
-        <SectionLabel>{{ today }}</SectionLabel>
-        <Display size="lg" class="hero__title">Runtime overview</Display>
-      </div>
-    </PastelBg>
+    <PageHeader
+      :eyebrow="today"
+      title="Runtime overview"
+      subtitle="Live event stream across all registered subsystems."
+    />
 
     <div class="page-body">
       <section class="page-section">
@@ -118,13 +115,6 @@ const filteredEvents = computed(() =>
 </template>
 
 <style scoped>
-.hero {
-  padding: 64px 32px 56px;
-  border-bottom: 1px solid var(--ink-08);
-}
-.hero__inner { max-width: 820px; }
-.hero__title { margin-top: 14px; }
-
 .filter-row {
   display: flex;
   flex-direction: column;

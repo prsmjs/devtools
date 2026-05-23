@@ -50,7 +50,7 @@ function onSelect(item) {
 <template>
   <AppLayout nav-width="232px">
     <template #nav>
-      <SideNav :sections="navSections" :active-key="activeKey" @select="onSelect">
+      <SideNav :sections="navSections" :active-key="activeKey" tinted-header @select="onSelect">
         <template #header>
           <div class="brand">
             <span class="brand__mark">prsm</span>

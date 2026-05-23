@@ -474,37 +474,49 @@ const FAKE_USERS = {
 }
 
 async function loadUser(id) {
+  tracer.addEvent('db.query', { table: 'users', userId: id })
   await delay(80 + Math.random() * 120)
+  if (Math.random() < 0.2) tracer.addEvent('cache.miss-secondary-index', { userId: id })
   return FAKE_USERS[id] ?? null
 }
 
 async function loadTrending() {
+  tracer.addEvent('external.api.call', { provider: 'trending-api', timeout: '500ms' })
   await delay(180 + Math.random() * 220)
   const tags = ['ai', 'redis', 'esm', 'vite', 'pg', 'realtime', 'cache']
   const shuffled = tags.slice().sort(() => Math.random() - 0.5).slice(0, 4)
+  tracer.addEvent('compute.complete', { tagCount: shuffled.length })
   return { tags: shuffled, generatedAt: Date.now() }
 }
 
 setInterval(() => {
-  const userId = String(1 + Math.floor(Math.random() * 5))
-  const tags = [`user:${userId}`, `tier:${FAKE_USERS[userId]?.tier ?? 'unknown'}`]
-  userCache.fetch(`user:${userId}`, () => loadUser(userId), { ttl: '30s', tags }).catch(() => {})
+  tracer.span('scheduled.user-cache-poll', async () => {
+    const userId = String(1 + Math.floor(Math.random() * 5))
+    const tags = [`user:${userId}`, `tier:${FAKE_USERS[userId]?.tier ?? 'unknown'}`]
+    await userCache.fetch(`user:${userId}`, () => loadUser(userId), { ttl: '30s', tags })
+  }).catch(() => {})
 }, 1100)
 
 setInterval(() => {
-  trendingCache.fetch('global', loadTrending, { ttl: '5s', staleWhile: '20s' }).catch(() => {})
+  tracer.span('scheduled.trending-cache-poll', async () => {
+    await trendingCache.fetch('global', loadTrending, { ttl: '5s', staleWhile: '20s' })
+  }).catch(() => {})
 }, 700)
 
 setInterval(() => {
-  Promise.all([
-    userCache.fetch('user:1', () => loadUser('1')),
-    userCache.fetch('user:1', () => loadUser('1')),
-    userCache.fetch('user:1', () => loadUser('1')),
-  ]).catch(() => {})
+  tracer.span('scheduled.hot-key-burst', async () => {
+    await Promise.all([
+      userCache.fetch('user:1', () => loadUser('1')),
+      userCache.fetch('user:1', () => loadUser('1')),
+      userCache.fetch('user:1', () => loadUser('1')),
+    ])
+  }).catch(() => {})
 }, 9000)
 
 setInterval(() => {
-  userCache.invalidateTag('tier:pro').catch(() => {})
+  tracer.span('scheduled.pro-tier-invalidation', async () => {
+    await userCache.invalidateTag('tier:pro')
+  }).catch(() => {})
 }, 23000)
 
 app.use(
@@ -519,6 +531,7 @@ app.use(
     realtime,
     cache: { users: userCache, trending: trendingCache },
     tracer,
+    traceStore: { socket: { host: '127.0.0.1', port: 6379 } },
     connectionDisplay: (metadata) => ({
       label: metadata?.user,
       sublabel: metadata?.role,
@@ -574,7 +587,9 @@ app.post('/test/order', async (_req, res) => {
 
 setInterval(async () => {
   const url = 'http://127.0.0.1:3000/test/order'
-  try { await fetch(url, { method: 'POST' }) } catch {}
+  await tracer.span('scheduled.synthetic-order', async () => {
+    try { await tracer.fetch(url, { method: 'POST' }) } catch {}
+  }).catch(() => {})
 }, 2500)
 
 const port = 3000

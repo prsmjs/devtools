@@ -7,6 +7,8 @@ const props = defineProps({
   activeKey: { type: [String, Number, null], default: null },
   // show the small leading dot indicator on each item
   indicators: { type: Boolean, default: false },
+  // wash the header (branding) area with a soft pastel gradient
+  tintedHeader: { type: Boolean, default: false },
 })
 const emit = defineEmits(["select"])
 const isActive = (item) => item.active ?? (item.key === props.activeKey)
@@ -14,7 +16,10 @@ const isActive = (item) => item.active ?? (item.key === props.activeKey)
 
 <template>
   <nav class="pc-sidenav">
-    <header v-if="$slots.header" class="pc-sidenav__header"><slot name="header" /></header>
+    <header
+      v-if="$slots.header"
+      :class="['pc-sidenav__header', { 'pc-sidenav__header--tinted': tintedHeader }]"
+    ><slot name="header" /></header>
 
     <ScrollArea class="pc-sidenav__sections" height="100%">
       <div class="pc-sidenav__sections-list">
@@ -57,6 +62,15 @@ const isActive = (item) => item.active ?? (item.key === props.activeKey)
 }
 /* 10px inset matches the section labels + nav-item content */
 .pc-sidenav__header { flex-shrink: 0; padding: 0 10px; }
+/* optional pastel wash - bleeds to the sidebar edges, content stays aligned */
+.pc-sidenav__header--tinted {
+  margin: -20px -16px 0;
+  padding: 20px 26px;
+  background:
+    radial-gradient(75% 100% at 0% 0%, rgba(189, 187, 255, 0.32), transparent 72%),
+    radial-gradient(70% 95% at 100% 0%, rgba(214, 225, 255, 0.34), transparent 70%),
+    var(--paper);
+}
 .pc-sidenav__sections {
   flex: 1;
   min-height: 0;

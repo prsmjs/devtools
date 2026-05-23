@@ -94,7 +94,6 @@ async function runJob(name) {
             v-for="job in jobs"
             :key="job.name"
             padded
-            elevated
             class="cron-card"
             :class="{ 'cron-card--soon': isSoon(job.nextFireTime) }"
           >

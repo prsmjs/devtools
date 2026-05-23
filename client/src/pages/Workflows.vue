@@ -205,26 +205,27 @@ async function submitRun() {
             separator="›"
             @select="onCrumb"
           />
-          <Panel gradient elevated>
-            <template #header>
-              <h2 class="wf-title">{{ selectedWorkflow.name }}</h2>
-              <p class="wf-sub">Version {{ selectedWorkflow.version }}</p>
-            </template>
-            <template #aside>
-              <div class="wf-stats">
-                <span>{{ selectedWorkflow.graph.nodes.length }} steps</span>
-                <span class="wf-card__dot" />
-                <span>{{ selectedWorkflow.graph.edges.length }} edges</span>
+          <header class="wf-id">
+            <div class="wf-id__core">
+              <h2 class="wf-id__name">{{ selectedWorkflow.name }}</h2>
+              <span class="wf-id__version">v{{ selectedWorkflow.version }}</span>
+            </div>
+            <dl class="wf-id__stats">
+              <div>
+                <dt>Steps</dt>
+                <dd>{{ selectedWorkflow.graph.nodes.length }}</dd>
               </div>
-            </template>
-            <PanelSection flush>
-              <WorkflowGraph
-                :graph="selectedWorkflow.graph"
-                :selected-step="selectedStep"
-                @select-step="selectedStep = $event"
-              />
-            </PanelSection>
-          </Panel>
+              <div>
+                <dt>Edges</dt>
+                <dd>{{ selectedWorkflow.graph.edges.length }}</dd>
+              </div>
+            </dl>
+          </header>
+          <WorkflowGraph
+            :graph="selectedWorkflow.graph"
+            :selected-step="selectedStep"
+            @select-step="selectedStep = $event"
+          />
 
           <Panel v-if="selectedNode" :title="selectedNode.name">
             <PanelSection label="Step definition">
@@ -288,55 +289,79 @@ async function submitRun() {
   .wf-layout { grid-template-columns: 1fr; }
 }
 
-.wf-list { display: flex; flex-direction: column; gap: 10px; }
+.wf-list { display: flex; flex-direction: column; gap: 6px; }
 .wf-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
+  gap: 6px;
+  padding: 12px 14px;
   text-align: left;
-  background: var(--paper);
+  background: var(--paper, #fff);
   border: 1px solid var(--ink-08);
-  border-radius: var(--radius-comfy);
+  border-radius: var(--radius-sharp);
   cursor: pointer;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
 }
-.wf-card:hover { border-color: var(--ink-20); box-shadow: var(--shadow-soft); }
-.wf-card--active {
-  border-color: var(--lavender);
-  box-shadow: var(--shadow-soft);
-}
-.wf-card--active:hover { border-color: var(--lavender); }
+.wf-card:hover:not(.wf-card--active) { background: var(--ink-04); border-color: var(--ink-20); }
+.wf-card--active { background: var(--ink-08); border-color: var(--ink-20); }
 .wf-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .wf-card__name {
-  font-family: var(--display);
-  font-size: 15px;
+  font-size: 13px;
+  letter-spacing: -0.1px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.wf-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 22px;
+  background: var(--paper, #fff);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+}
+.wf-id__core { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.wf-id__name {
+  margin: 0;
+  font-size: 18px;
   font-weight: 500;
   letter-spacing: -0.2px;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.wf-card__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
-
-.wf-detail { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
-.wf-title {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.5px;
-  color: var(--ink);
-}
-.wf-sub { margin: 4px 0 0; font-size: 14px; color: var(--ink-60); }
-.wf-stats {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.wf-id__version {
   font-family: var(--mono);
-  text-transform: uppercase;
   font-size: 11px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: var(--radius-sharp);
+  background: var(--ink-08);
   color: var(--ink-60);
 }
+.wf-id__stats { display: flex; gap: 20px; margin: 0; }
+.wf-id__stats div { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+.wf-id__stats dt {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+}
+.wf-id__stats dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink);
+}
+
 .wf-node-desc {
   margin: 14px 0 0;
   font-size: 14px;

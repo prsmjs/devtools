@@ -397,34 +397,30 @@ async function doAction(path, label, doneLabel) {
             separator="›"
             @select="onCrumb"
           />
-          <Panel gradient elevated>
-            <template #header>
-              <h2 class="exec-title">{{ selectedExecution.workflow }}</h2>
-              <p class="exec-sub">{{ selectedExecution.id }}</p>
-            </template>
-            <template #aside>
-              <div class="exec-actions">
-                <Badge :variant="statusVariant(selectedExecution.status)" dot>{{ selectedExecution.status }}</Badge>
-                <Button v-if="canSignal" size="sm" variant="primary" icon="lucide:bell" @click="openSignal">
-                  Signal
-                </Button>
-                <Button v-if="canResume" size="sm" variant="ghost" icon="lucide:rotate-ccw" :loading="busy" @click="doAction('resume', 'Resume', 'resumed')">
-                  Resume
-                </Button>
-                <Button v-if="canCancel" size="sm" variant="danger" :loading="busy" @click="doAction('cancel', 'Cancel', 'canceled')">
-                  Cancel
-                </Button>
-              </div>
-            </template>
-            <PanelSection flush>
-              <WorkflowGraph
-                :graph="selectedWorkflow.graph"
-                :execution="selectedExecution"
-                :selected-step="selectedStep"
-                @select-step="selectedStep = $event"
-              />
-            </PanelSection>
-          </Panel>
+          <header class="exec-id">
+            <div class="exec-id__core">
+              <h2 class="exec-id__name">{{ selectedExecution.workflow }}</h2>
+              <code class="exec-id__hash">{{ selectedExecution.id }}</code>
+            </div>
+            <div class="exec-id__actions">
+              <Badge :variant="statusVariant(selectedExecution.status)" dot>{{ selectedExecution.status }}</Badge>
+              <Button v-if="canSignal" size="sm" variant="primary" icon="lucide:bell" @click="openSignal">
+                Signal
+              </Button>
+              <Button v-if="canResume" size="sm" variant="ghost" icon="lucide:rotate-ccw" :loading="busy" @click="doAction('resume', 'Resume', 'resumed')">
+                Resume
+              </Button>
+              <Button v-if="canCancel" size="sm" variant="danger" :loading="busy" @click="doAction('cancel', 'Cancel', 'canceled')">
+                Cancel
+              </Button>
+            </div>
+          </header>
+          <WorkflowGraph
+            :graph="selectedWorkflow.graph"
+            :execution="selectedExecution"
+            :selected-step="selectedStep"
+            @select-step="selectedStep = $event"
+          />
 
           <Panel v-if="selectedExecution.input != null" title="Input">
             <PanelSection><JsonView :data="selectedExecution.input" /></PanelSection>
@@ -544,8 +540,8 @@ async function doAction(path, label, doneLabel) {
   transition: background 120ms ease;
 }
 .exec-row:first-child { border-top: 0; }
-.exec-row:hover { background: var(--ink-04); }
-.exec-row--active { background: rgba(189, 187, 255, 0.16); }
+.exec-row:hover:not(.exec-row--active) { background: var(--ink-04); }
+.exec-row--active { background: var(--ink-08); }
 .exec-row__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .exec-row__name {
   font-family: var(--display);
@@ -568,22 +564,38 @@ async function doAction(path, label, doneLabel) {
 }
 .exec-row__id { color: var(--ink-60); }
 
-.exec-center { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-.exec-title {
+.exec-center { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.exec-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 22px;
+  background: var(--paper, #fff);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+}
+.exec-id__core { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.exec-id__name {
   margin: 0;
-  font-family: var(--display);
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 500;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.2px;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.exec-sub {
-  margin: 4px 0 0;
+.exec-id__hash {
   font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--ink-60);
+  font-size: 11px;
+  color: var(--ink-40);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.exec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exec-id__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
 .exec-wait { margin: 16px 24px 4px; }
 
 .exec-inspector { display: flex; flex-direction: column; gap: 20px; min-width: 0; }

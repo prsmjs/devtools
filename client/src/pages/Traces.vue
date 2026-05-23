@@ -1,16 +1,17 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api } from '../api.js'
-import { basePath } from '../base.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import Badge from '../ui/components/Badge.vue'
 import Button from '../ui/components/Button.vue'
+import ScrollArea from '../ui/components/ScrollArea.vue'
 
 const traces = ref([])
 const selectedId = ref(null)
 const detail = ref(null)
 const selectedSpanId = ref(null)
+const selectedEventIdx = ref(null)
 const live = ref(true)
 const searchId = ref('')
 const filterStatus = ref('')
@@ -18,7 +19,6 @@ const filterService = ref('')
 const loaded = ref(false)
 
 let pollHandle = null
-let sse = null
 
 async function loadTraces() {
   try {
@@ -35,24 +35,29 @@ async function loadTraces() {
   loaded.value = true
 }
 
-async function loadDetail(id) {
-  if (!id) { detail.value = null; return }
+async function loadDetail(id, { initial = false } = {}) {
+  if (!id) { detail.value = null; selectedSpanId.value = null; return }
   try {
     const res = await fetch(api(`/traces/${id}`))
-    if (res.ok) {
-      detail.value = await res.json()
-      selectedSpanId.value = detail.value.spans[0]?.spanId ?? null
-    } else {
-      detail.value = null
+    if (!res.ok) {
+      if (initial) { detail.value = null; selectedSpanId.value = null }
+      return
+    }
+    const next = await res.json()
+    detail.value = next
+    if (initial || !selectedSpanId.value || !next.spans.some((s) => s.spanId === selectedSpanId.value)) {
+      selectedSpanId.value = next.spans[0]?.spanId ?? null
     }
   } catch {
-    detail.value = null
+    if (initial) { detail.value = null; selectedSpanId.value = null }
   }
 }
 
 function selectTrace(id) {
+  if (selectedId.value === id) return
   selectedId.value = id
-  loadDetail(id)
+  selectedSpanId.value = null
+  loadDetail(id, { initial: true })
 }
 
 function jumpToTrace() {
@@ -60,6 +65,20 @@ function jumpToTrace() {
   if (!id) return
   selectTrace(id)
 }
+
+const sortMode = ref('depth')
+
+const sortedTraces = computed(() => {
+  const list = traces.value.slice()
+  if (sortMode.value === 'depth') {
+    list.sort((a, b) => b.spanCount - a.spanCount || b.startedAt - a.startedAt)
+  } else if (sortMode.value === 'slow') {
+    list.sort((a, b) => b.durationMs - a.durationMs)
+  } else {
+    list.sort((a, b) => b.startedAt - a.startedAt)
+  }
+  return list
+})
 
 const allServices = computed(() => {
   const set = new Set()
@@ -72,11 +91,19 @@ const selectedSpan = computed(() => {
   return detail.value.spans.find((s) => s.spanId === selectedSpanId.value) ?? null
 })
 
+const responseSentPct = computed(() => {
+  if (!detail.value) return null
+  const root = detail.value.spans.find((s) => !s.parentSpanId && s.kind === 'server')
+  if (!root) return null
+  const total = Math.max(0.001, detail.value.endedAt - detail.value.startedAt)
+  return ((root.endedAt - detail.value.startedAt) / total) * 100
+})
+
 const waterfall = computed(() => {
   if (!detail.value) return { rows: [], totalDuration: 0, startedAt: 0 }
   const trace = detail.value
   const startedAt = trace.startedAt
-  const totalDuration = Math.max(1, trace.endedAt - trace.startedAt)
+  const totalDuration = Math.max(0.001, trace.endedAt - trace.startedAt)
   const byParent = new Map()
   for (const s of trace.spans) {
     const parent = s.parentSpanId ?? null
@@ -107,6 +134,16 @@ const waterfall = computed(() => {
   }
   return { rows, totalDuration, startedAt }
 })
+
+function eventLeftPct(event, trace) {
+  const total = Math.max(0.001, trace.endedAt - trace.startedAt)
+  return Math.max(0, Math.min(100, ((event.time - trace.startedAt) / total) * 100))
+}
+
+function selectEvent(spanId, idx) {
+  selectedSpanId.value = spanId
+  selectedEventIdx.value = idx
+}
 
 function subsystemFromName(name) {
   if (!name) return 'other'
@@ -145,16 +182,10 @@ onMounted(async () => {
   pollHandle = setInterval(() => {
     if (live.value) loadTraces()
   }, 1500)
-
-  sse = new EventSource(`${basePath}/api/events`)
-  sse.addEventListener('trace:span', () => {
-    if (live.value && selectedId.value) loadDetail(selectedId.value)
-  })
 })
 
 onBeforeUnmount(() => {
   if (pollHandle) clearInterval(pollHandle)
-  if (sse) sse.close()
 })
 
 watch([filterStatus, filterService], () => { loadTraces() })
@@ -192,6 +223,11 @@ watch([filterStatus, filterService], () => { loadTraces() })
       <div v-else class="tr-layout">
         <aside class="tr-list">
           <div class="tr-filters">
+            <select v-model="sortMode">
+              <option value="depth">sort: most spans</option>
+              <option value="recent">sort: most recent</option>
+              <option value="slow">sort: slowest</option>
+            </select>
             <select v-model="filterStatus">
               <option value="">all status</option>
               <option value="ok">ok</option>
@@ -202,29 +238,28 @@ watch([filterStatus, filterService], () => { loadTraces() })
               <option v-for="s in allServices" :key="s" :value="s">{{ s }}</option>
             </select>
           </div>
-          <ul class="tr-traces">
-            <li
-              v-for="t in traces"
-              :key="t.traceId"
-              :class="['tr-trace', { 'tr-trace--active': t.traceId === selectedId, 'tr-trace--error': t.status === 'error' }]"
-              @click="selectTrace(t.traceId)"
-            >
-              <div class="tr-trace__top">
-                <span class="tr-trace__name">{{ t.rootName ?? t.traceId.slice(0, 8) }}</span>
-                <span class="tr-trace__dur">{{ formatDur(t.durationMs) }}</span>
-              </div>
+          <ScrollArea max-height="calc(100vh - 220px)">
+            <ul class="tr-traces">
+              <li
+                v-for="t in sortedTraces"
+                :key="t.traceId"
+                :class="['tr-trace', { 'tr-trace--active': t.traceId === selectedId, 'tr-trace--error': t.status === 'error' }]"
+                @click="selectTrace(t.traceId)"
+              >
+              <div class="tr-trace__name">{{ t.rootName ?? t.traceId.slice(0, 8) }}</div>
               <div class="tr-trace__meta">
                 <span class="tr-trace__service">{{ t.rootService ?? '—' }}</span>
                 <span class="tr-trace__sep">·</span>
-                <span class="tr-trace__count">{{ t.spanCount }} span{{ t.spanCount === 1 ? '' : 's' }}</span>
+                <span class="tr-trace__dur">{{ formatDur(t.durationMs) }}</span>
                 <span class="tr-trace__sep">·</span>
                 <span class="tr-trace__age">{{ age(t.startedAt) }}</span>
               </div>
-              <div class="tr-trace__id">{{ t.traceId }}</div>
             </li>
-          </ul>
+            </ul>
+          </ScrollArea>
         </aside>
 
+        <div class="tr-right">
         <main class="tr-main">
           <EmptyState
             v-if="!detail"
@@ -251,12 +286,22 @@ watch([filterStatus, filterService], () => { loadTraces() })
             </div>
 
             <div class="tr-waterfall">
+              <div
+                v-if="responseSentPct !== null"
+                class="tr-response-marker"
+                :style="{ '--marker-pct': `${responseSentPct}%` }"
+                title="HTTP response sent"
+              >
+                <span class="tr-response-marker__label">response sent</span>
+              </div>
               <div class="tr-waterfall__axis">
-                <span>0</span>
-                <span>{{ formatDur(detail.durationMs / 4) }}</span>
-                <span>{{ formatDur(detail.durationMs / 2) }}</span>
-                <span>{{ formatDur((detail.durationMs * 3) / 4) }}</span>
-                <span>{{ formatDur(detail.durationMs) }}</span>
+                <div class="tr-axis__label">0</div>
+                <div class="tr-axis__track">
+                  <span>{{ formatDur(detail.durationMs / 4) }}</span>
+                  <span>{{ formatDur(detail.durationMs / 2) }}</span>
+                  <span>{{ formatDur((detail.durationMs * 3) / 4) }}</span>
+                </div>
+                <div class="tr-axis__total">{{ formatDur(detail.durationMs) }}</div>
               </div>
               <div
                 v-for="row in waterfall.rows"
@@ -273,6 +318,15 @@ watch([filterStatus, filterService], () => { loadTraces() })
                     :class="['tr-bar', `tr-bar--${subsystemFromName(row.span.name)}`]"
                     :style="{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }"
                   ></div>
+                  <button
+                    v-for="(ev, idx) in row.span.events || []"
+                    :key="idx"
+                    type="button"
+                    class="tr-event"
+                    :style="{ left: `${eventLeftPct(ev, detail)}%` }"
+                    :title="`${ev.name}${Object.keys(ev.attributes || {}).length ? ' · ' + JSON.stringify(ev.attributes) : ''}`"
+                    @click.stop="selectEvent(row.span.spanId, idx)"
+                  ></button>
                 </div>
                 <div class="tr-row__dur">{{ formatDur(row.span.durationMs) }}</div>
               </div>
@@ -301,6 +355,27 @@ watch([filterStatus, filterService], () => { loadTraces() })
                 </div>
               </dl>
             </section>
+            <section v-if="selectedSpan.events && selectedSpan.events.length">
+              <div class="tr-detail__label">Events ({{ selectedSpan.events.length }})</div>
+              <ol class="tr-events">
+                <li
+                  v-for="(ev, idx) in selectedSpan.events"
+                  :key="idx"
+                  :class="['tr-event-row', { 'tr-event-row--active': selectedEventIdx === idx }]"
+                  @click="selectedEventIdx = idx"
+                >
+                  <div class="tr-event-row__head">
+                    <span class="tr-event-row__name">{{ ev.name }}</span>
+                    <span class="tr-event-row__offset">+{{ formatDur(ev.time - selectedSpan.startedAt) }}</span>
+                  </div>
+                  <div v-if="ev.attributes && Object.keys(ev.attributes).length" class="tr-event-row__attrs">
+                    <span v-for="(v, k) in ev.attributes" :key="k">
+                      <code>{{ k }}=</code><code>{{ typeof v === 'object' ? JSON.stringify(v) : String(v) }}</code>
+                    </span>
+                  </div>
+                </li>
+              </ol>
+            </section>
             <section v-if="selectedSpan.error">
               <div class="tr-detail__label">Error</div>
               <div class="tr-error">
@@ -320,6 +395,7 @@ watch([filterStatus, filterService], () => { loadTraces() })
             </section>
           </template>
         </aside>
+        </div>
       </div>
     </div>
   </div>
@@ -342,14 +418,26 @@ watch([filterStatus, filterService], () => { loadTraces() })
 
 .tr-layout {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
-  min-height: 600px;
 }
-@media (max-width: 1200px) {
-  .tr-layout { grid-template-columns: 280px minmax(0, 1fr); }
-  .tr-detail { grid-column: 1 / -1; }
+.tr-right {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1400px) {
+  .tr-right {
+    grid-template-columns: 1fr;
+  }
+  .tr-detail { position: static; }
+}
+@media (max-width: 760px) {
+  .tr-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tr-list {
@@ -359,35 +447,43 @@ watch([filterStatus, filterService], () => { loadTraces() })
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  align-self: start;
+  max-height: calc(100vh - 140px);
+  min-width: 0;
 }
+.tr-traces { width: 100%; box-sizing: border-box; }
+.tr-trace { width: 100%; box-sizing: border-box; }
 .tr-filters {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--ink-08);
 }
 .tr-filters select {
-  flex: 1;
+  flex: 1 1 100%;
+  min-width: 0;
   font-family: var(--mono);
   font-size: 11px;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border: 1px solid var(--ink-08);
   border-radius: var(--radius-sharp);
   background: var(--paper, #fff);
   color: var(--ink);
 }
-.tr-traces { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 70vh; }
+.tr-traces { list-style: none; margin: 0; padding: 0; }
 .tr-trace {
   padding: 10px 14px;
   border-top: 1px solid var(--ink-04);
   cursor: pointer;
   transition: background 100ms ease;
+  min-width: 0;
+  overflow: hidden;
 }
 .tr-trace:first-child { border-top: 0; }
-.tr-trace:hover { background: var(--ink-02, var(--ink-04)); }
-.tr-trace--active { background: var(--ink-04); border-left: 3px solid var(--accent); padding-left: 11px; }
+.tr-trace:hover:not(.tr-trace--active) { background: var(--ink-04); }
+.tr-trace--active { background: var(--ink-08); }
 .tr-trace--error .tr-trace__name { color: var(--status-failed); }
-.tr-trace__top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .tr-trace__name {
   font-family: var(--mono);
   font-size: 12px;
@@ -401,9 +497,9 @@ watch([filterStatus, filterService], () => { loadTraces() })
   font-size: 11px;
   color: var(--ink-60);
 }
-.tr-trace__meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--ink-40); }
+.tr-trace__meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--ink-40); min-width: 0; overflow: hidden; }
+.tr-trace__service, .tr-trace__dur, .tr-trace__age { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tr-trace__sep { opacity: 0.5; }
-.tr-trace__id { font-family: var(--mono); font-size: 9.5px; color: var(--ink-40); margin-top: 4px; opacity: 0.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tr-main {
   display: flex;
@@ -415,11 +511,12 @@ watch([filterStatus, filterService], () => { loadTraces() })
   padding: 18px 22px;
   min-width: 0;
 }
-.tr-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.tr-header__name { margin: 0; font-size: 16px; letter-spacing: -0.1px; color: var(--ink); }
-.tr-header__id { display: block; margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-40); }
-.tr-header__stats { display: flex; gap: 18px; margin: 0; }
-.tr-header__stats div { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+.tr-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tr-header > div:first-child { min-width: 0; flex: 1 1 200px; }
+.tr-header__name { margin: 0; font-size: 16px; letter-spacing: -0.1px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-header__id { display: block; margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-40); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-header__stats { display: flex; gap: 14px; margin: 0; flex-wrap: wrap; }
+.tr-header__stats div { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; min-width: 50px; }
 .tr-header__stats dt { font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-40); }
 .tr-header__stats dd { margin: 0; font-family: var(--mono); font-size: 13px; color: var(--ink); }
 
@@ -427,12 +524,37 @@ watch([filterStatus, filterService], () => { loadTraces() })
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--ink-08);
-  padding-top: 8px;
+  padding-top: 24px;
   margin-top: 4px;
+  position: relative;
+}
+.tr-response-marker {
+  position: absolute;
+  top: 16px;
+  bottom: 0;
+  width: 1px;
+  left: calc(clamp(140px, 22vw, 220px) + 8px + ((100% - clamp(140px, 22vw, 220px) - 56px - 16px) * (var(--marker-pct) / 100%)));
+  background: linear-gradient(to bottom, rgba(96, 165, 250, 0.55), rgba(96, 165, 250, 0.12));
+  pointer-events: none;
+  z-index: 1;
+}
+.tr-response-marker__label {
+  position: absolute;
+  top: -14px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #60a5fa;
+  background: var(--paper, #fff);
+  white-space: nowrap;
 }
 .tr-waterfall__axis {
   display: grid;
-  grid-template-columns: 240px 1fr 60px;
+  grid-template-columns: minmax(140px, 220px) 1fr 56px;
+  gap: 8px;
   align-items: center;
   padding: 4px 0 8px;
   border-bottom: 1px dashed var(--ink-08);
@@ -440,14 +562,13 @@ watch([filterStatus, filterService], () => { loadTraces() })
   font-size: 9.5px;
   color: var(--ink-40);
 }
-.tr-waterfall__axis span:first-child { grid-column: 1; }
-.tr-waterfall__axis span:not(:first-child):not(:last-child) { grid-column: 2; display: inline-block; }
-.tr-waterfall__axis span:last-child { grid-column: 3; text-align: right; }
-.tr-waterfall__axis { position: relative; }
+.tr-axis__label { text-align: left; }
+.tr-axis__track { display: flex; justify-content: space-between; }
+.tr-axis__total { text-align: right; }
 
 .tr-row {
   display: grid;
-  grid-template-columns: 240px 1fr 60px;
+  grid-template-columns: minmax(140px, 220px) 1fr 56px;
   align-items: center;
   gap: 8px;
   padding: 5px 0;
@@ -495,6 +616,21 @@ watch([filterStatus, filterService], () => { loadTraces() })
 .tr-bar--limit    { background: #fb7185; }
 .tr-bar--realtime { background: #f472b6; }
 .tr-bar--other    { background: #94a3b8; }
+.tr-event {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #facc15;
+  border: 1.5px solid var(--paper, #fff);
+  padding: 0;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.tr-event:hover { transform: translate(-50%, -50%) scale(1.25); }
 .tr-row--error .tr-bar { outline: 2px solid var(--status-failed); outline-offset: 1px; }
 .tr-row--error .tr-row__name { color: var(--status-failed); }
 .tr-row__dur {
@@ -533,4 +669,20 @@ watch([filterStatus, filterService], () => { loadTraces() })
 .tr-error { background: rgba(254, 100, 100, 0.06); border-left: 3px solid var(--status-failed); padding: 10px 12px; border-radius: 2px; }
 .tr-error__name { font-family: var(--mono); font-size: 12px; color: var(--status-failed); margin-bottom: 6px; }
 .tr-error__stack { font-family: var(--mono); font-size: 10px; color: var(--ink-60); white-space: pre-wrap; overflow-x: auto; margin: 0; }
+
+.tr-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tr-event-row {
+  padding: 8px 10px;
+  background: var(--ink-04);
+  border-radius: var(--radius-sharp);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.tr-event-row:hover { background: var(--ink-08); }
+.tr-event-row--active { background: var(--ink-08); outline: 1px solid #facc15; }
+.tr-event-row__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tr-event-row__name { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+.tr-event-row__offset { font-family: var(--mono); font-size: 10px; color: var(--ink-40); }
+.tr-event-row__attrs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-60); }
+.tr-event-row__attrs code:first-child { color: var(--ink-40); }
 </style>

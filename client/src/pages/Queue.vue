@@ -65,16 +65,16 @@ const ACTION_VARIANT = {
     <div class="page-body">
       <section class="page-section">
         <div class="stats-grid">
-          <Card padded elevated>
+          <Card padded>
             <Stat label="In-flight" :value="inFlight" caption="jobs running right now" size="lg" />
           </Card>
-          <Card padded elevated>
+          <Card padded>
             <Stat label="Completed" :value="trackCounts.completed" caption="since page load" size="lg" />
           </Card>
-          <Card padded elevated>
+          <Card padded>
             <Stat label="Failed" :value="trackCounts.failed" caption="since page load" size="lg" />
           </Card>
-          <Card padded elevated>
+          <Card padded>
             <Stat label="Retried" :value="trackCounts.retried" caption="since page load" size="lg" />
           </Card>
         </div>

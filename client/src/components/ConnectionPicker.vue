@@ -50,10 +50,10 @@ defineEmits(['select'])
   text-align: left;
   border-radius: var(--radius-sharp);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease;
 }
 .conn-item:hover:not(.conn-item--active) { background: var(--ink-04); }
-.conn-item--active { background: var(--midnight); }
+.conn-item--active { background: var(--ink-08); }
 .conn-item__label {
   font-size: 13px;
   letter-spacing: -0.13px;
@@ -70,8 +70,6 @@ defineEmits(['select'])
   letter-spacing: 0.02em;
 }
 .conn-item__id--solo { font-size: 12px; color: var(--ink); }
-.conn-item--active .conn-item__label,
-.conn-item--active .conn-item__id { color: var(--paper-on-dark); }
 .conn-item__count {
   flex-shrink: 0;
   font-family: var(--mono);
@@ -99,7 +97,4 @@ defineEmits(['select'])
   font-size: 11px;
   color: var(--ink-60);
 }
-.conn-item--active .conn-item__count,
-.conn-item--active .conn-item__meta-label,
-.conn-item--active .conn-item__meta-value { color: var(--paper-on-dark-60); }
 </style>
