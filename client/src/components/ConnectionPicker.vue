@@ -17,8 +17,14 @@
       :class="{ 'conn-item--active': selectedId === conn.id }"
       @click="$emit('select', conn.id)"
     >
-      <span class="conn-item__label conn-item__label--mono" :title="conn.id">{{ conn.id.slice(0, 8) }}</span>
-      <span v-if="conn.latency !== null" class="conn-item__meta">{{ conn.latency }}ms</span>
+      <span class="conn-item__stack">
+        <span v-if="conn.label" class="conn-item__label">{{ conn.label }}</span>
+        <span class="conn-item__id" :class="{ 'conn-item__id--solo': !conn.label }" :title="conn.id">{{ conn.id.slice(0, 8) }}</span>
+      </span>
+      <span v-if="conn.latency !== null" class="conn-item__meta" title="Last measured round-trip time">
+        <span class="conn-item__meta-label">rtt</span>
+        <span class="conn-item__meta-value">{{ conn.latency }}ms</span>
+      </span>
     </button>
   </div>
 </template>
@@ -56,16 +62,44 @@ defineEmits(['select'])
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.conn-item__label--mono { font-family: var(--mono); font-size: 12px; }
-.conn-item--active .conn-item__label { color: var(--paper-on-dark); }
-.conn-item__count,
-.conn-item__meta {
+.conn-item__stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.conn-item__id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-40);
+  letter-spacing: 0.02em;
+}
+.conn-item__id--solo { font-size: 12px; color: var(--ink); }
+.conn-item--active .conn-item__label,
+.conn-item--active .conn-item__id { color: var(--paper-on-dark); }
+.conn-item__count {
   flex-shrink: 0;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--ink-40);
 }
+.conn-item__meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1;
+}
+.conn-item__meta-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-40);
+}
+.conn-item__meta-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-60);
+}
 .conn-item--active .conn-item__count,
-.conn-item--active .conn-item__meta { color: var(--paper-on-dark-60); }
+.conn-item--active .conn-item__meta-label,
+.conn-item--active .conn-item__meta-value { color: var(--paper-on-dark-60); }
 </style>

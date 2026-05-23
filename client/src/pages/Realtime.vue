@@ -35,18 +35,6 @@
             </PanelSection>
           </Panel>
 
-          <Panel v-if="Object.keys(nonEmptyExposed).length" title="Registered">
-            <PanelSection flush>
-              <div class="rt-sidebar__body rt-exposed">
-                <div v-for="(patterns, type) in nonEmptyExposed" :key="type" class="rt-exposed__row">
-                  <span class="rt-exposed__label">{{ formatExposedLabel(type) }}</span>
-                  <div class="rt-exposed__tags">
-                    <Badge v-for="p in patterns" :key="p" size="sm">{{ p }}</Badge>
-                  </div>
-                </div>
-              </div>
-            </PanelSection>
-          </Panel>
         </aside>
 
         <div class="rt-content">
@@ -57,6 +45,7 @@
             :records="filteredRecords"
             :detail="connectionDetail"
             :connections="state?.connections || []"
+            :exposed="state?.exposed || {}"
             :fetch-records="fetchCollectionRecords"
             :watched-records="watchedRecords"
             :watch-record="watchRecord"
@@ -78,23 +67,9 @@ import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
 import PanelSection from '../ui/components/PanelSection.vue'
 import Tabs from '../ui/components/Tabs.vue'
-import Badge from '../ui/components/Badge.vue'
 
 const route = useRoute()
 const router = useRouter()
-
-const exposedLabels = {
-  channels: 'channels',
-  records: 'records',
-  writableRecords: 'writable',
-  collections: 'collections',
-  presence: 'presence',
-  commands: 'commands',
-}
-
-function formatExposedLabel(key) {
-  return exposedLabels[key] || key
-}
 
 function navigateToConnection(connId) {
   selectConnection(connId)
@@ -153,13 +128,10 @@ const filteredRecords = computed(() => {
   return out
 })
 
-const nonEmptyExposed = computed(() => {
-  if (!state.value?.exposed) return {}
-  const out = {}
-  for (const [k, v] of Object.entries(state.value.exposed)) {
-    if (v.length) out[k] = v
-  }
-  return out
+const exposedCount = computed(() => {
+  const e = state.value?.exposed
+  if (!e) return 0
+  return Object.values(e).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)
 })
 
 const tabs = computed(() => [
@@ -168,6 +140,7 @@ const tabs = computed(() => [
   { value: 'collections', label: 'Collections', badge: Object.keys(filteredCollections.value).length },
   { value: 'records', label: 'Records', badge: Object.keys(filteredRecords.value).length },
   { value: 'metadata', label: 'Metadata' },
+  { value: 'exposed', label: 'Exposed', badge: exposedCount.value },
 ])
 
 const currentTab = computed(() => {
@@ -208,17 +181,6 @@ const currentTab = computed(() => {
 
 .rt-sidebar { display: flex; flex-direction: column; gap: 20px; }
 .rt-sidebar__body { padding: 10px 12px; }
-
-.rt-exposed { display: flex; flex-direction: column; gap: 14px; }
-.rt-exposed__row { display: flex; flex-direction: column; gap: 6px; }
-.rt-exposed__label {
-  font-family: var(--mono);
-  text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--ink-40);
-}
-.rt-exposed__tags { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .rt-content { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 </style>

@@ -15,9 +15,13 @@
       </template>
       <PanelSection flush>
         <div v-for="connId in subscribers" :key="connId" class="rt-row">
-          <button type="button" class="rt-conn" :title="connId" @click="$emit('navigate', connId)">
-            {{ connId.slice(0, 8) }}
-          </button>
+          <ConnectionChip
+            :connection-id="connId"
+            :connections="connections"
+            interactive
+            show-sublabel
+            @navigate="$emit('navigate', $event)"
+          />
         </div>
       </PanelSection>
     </Panel>
@@ -30,9 +34,11 @@ import Panel from '../../ui/components/Panel.vue'
 import PanelSection from '../../ui/components/PanelSection.vue'
 import Badge from '../../ui/components/Badge.vue'
 import EmptyState from '../../ui/components/EmptyState.vue'
+import ConnectionChip from '../../components/ConnectionChip.vue'
 
 const props = defineProps({
   channels: { type: Object, default: () => ({}) },
+  connections: { type: Array, default: () => [] },
 })
 
 defineEmits(['navigate'])
@@ -61,14 +67,4 @@ const channelEntries = computed(() => Object.entries(props.channels))
   border-top: 1px solid var(--ink-08);
 }
 .rt-row:first-child { border-top: 0; }
-.rt-conn {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
-  border-bottom: 1px solid var(--ink-20);
-  padding-bottom: 1px;
-  transition: border-color 120ms ease;
-}
-.rt-conn:hover { border-bottom-color: var(--ink); }
 </style>

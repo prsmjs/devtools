@@ -26,9 +26,13 @@
       </PanelSection>
       <PanelSection flush>
         <div v-for="(mode, connId) in info.subscribers" :key="connId" class="rt-row">
-          <button type="button" class="rt-conn" :title="connId" @click="$emit('navigate', connId)">
-            {{ connId.slice(0, 8) }}
-          </button>
+          <ConnectionChip
+            :connection-id="connId"
+            :connections="connections"
+            interactive
+            show-sublabel
+            @navigate="$emit('navigate', $event)"
+          />
           <Badge :variant="mode === 'full' ? 'paused' : 'default'" size="sm">{{ mode }}</Badge>
         </div>
       </PanelSection>
@@ -44,9 +48,11 @@ import PanelSection from '../../ui/components/PanelSection.vue'
 import Badge from '../../ui/components/Badge.vue'
 import Button from '../../ui/components/Button.vue'
 import EmptyState from '../../ui/components/EmptyState.vue'
+import ConnectionChip from '../../components/ConnectionChip.vue'
 
 const props = defineProps({
   records: { type: Object, default: () => ({}) },
+  connections: { type: Array, default: () => [] },
   watchedRecords: { type: Object, required: true },
   watchRecord: { type: Function, required: true },
   unwatchRecord: { type: Function, required: true },
@@ -88,14 +94,4 @@ function toggle(recordId) {
   border-top: 1px solid var(--ink-08);
 }
 .rt-row:first-child { border-top: 0; }
-.rt-conn {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
-  border-bottom: 1px solid var(--ink-20);
-  padding-bottom: 1px;
-  transition: border-color 120ms ease;
-}
-.rt-conn:hover { border-bottom-color: var(--ink); }
 </style>

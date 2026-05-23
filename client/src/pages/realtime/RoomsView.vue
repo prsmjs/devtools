@@ -11,9 +11,13 @@
       </template>
       <PanelSection flush>
         <div v-for="memberId in room.members" :key="memberId" class="rt-row">
-          <button type="button" class="rt-conn" :title="memberId" @click="$emit('navigate', memberId)">
-            {{ memberId.slice(0, 8) }}
-          </button>
+          <ConnectionChip
+            :connection-id="memberId"
+            :connections="connections"
+            interactive
+            show-sublabel
+            @navigate="$emit('navigate', $event)"
+          />
           <span v-if="room.presence[memberId]" class="rt-presence">{{ formatPresence(room.presence[memberId]) }}</span>
           <span v-else class="rt-presence rt-presence--none">no presence</span>
         </div>
@@ -27,9 +31,11 @@ import Panel from '../../ui/components/Panel.vue'
 import PanelSection from '../../ui/components/PanelSection.vue'
 import Badge from '../../ui/components/Badge.vue'
 import EmptyState from '../../ui/components/EmptyState.vue'
+import ConnectionChip from '../../components/ConnectionChip.vue'
 
 defineProps({
   rooms: { type: Array, default: () => [] },
+  connections: { type: Array, default: () => [] },
 })
 
 defineEmits(['navigate'])
@@ -69,16 +75,6 @@ function formatPresence(state) {
   border-top: 1px solid var(--ink-08);
 }
 .rt-row:first-child { border-top: 0; }
-.rt-conn {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
-  border-bottom: 1px solid var(--ink-20);
-  padding-bottom: 1px;
-  transition: border-color 120ms ease, color 120ms ease;
-}
-.rt-conn:hover { border-bottom-color: var(--ink); }
 .rt-presence {
   font-family: var(--mono);
   font-size: 11.5px;

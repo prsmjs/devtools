@@ -29,7 +29,20 @@ function patternToString(p) {
  */
 export function prsmDevtools(options = {}) {
   const router = Router()
-  const { queue, cron, limit, workflow, realtime, lock } = options
+  const { queue, cron, limit, workflow, realtime, lock, cache } = options
+  const connectionDisplay = typeof options.connectionDisplay === 'function' ? options.connectionDisplay : null
+
+  function displayFor(metadata) {
+    if (!connectionDisplay) return { label: null, sublabel: null }
+    try {
+      const out = connectionDisplay(metadata) ?? {}
+      const label = typeof out.label === 'string' && out.label.length ? out.label : null
+      const sublabel = typeof out.sublabel === 'string' && out.sublabel.length ? out.sublabel : null
+      return { label, sublabel }
+    } catch {
+      return { label: null, sublabel: null }
+    }
+  }
   const cellGraphs = normalizeCellGraphs(options.cells)
   const sseClients = new Set()
   const jsonBody = json()
@@ -77,6 +90,15 @@ export function prsmDevtools(options = {}) {
     }
   }
 
+  if (cache) {
+    for (const [name, c] of Object.entries(cache)) {
+      const events = ['hit', 'miss', 'set', 'del', 'invalidate', 'refresh', 'stampede:lead', 'stampede:wait', 'stampede:result', 'stampede:timeout', 'error']
+      for (const ev of events) {
+        c.on(ev, (data) => broadcast(`cache:${ev}`, { cache: name, ...(data ?? {}) }))
+      }
+    }
+  }
+
   router.get('/api/config', (_req, res) => {
     res.json({
       queue: !!queue,
@@ -86,8 +108,25 @@ export function prsmDevtools(options = {}) {
       realtime: !!realtime,
       cells: cellGraphs ? Object.keys(cellGraphs) : [],
       lock: lock ? Object.keys(lock) : [],
+      cache: cache ? Object.keys(cache) : [],
     })
   })
+
+  if (cache) {
+    router.get('/api/cache', (_req, res) => {
+      const out = {}
+      for (const [name, c] of Object.entries(cache)) {
+        out[name] = c.stats()
+      }
+      res.json(out)
+    })
+
+    router.get('/api/cache/:name', (req, res) => {
+      const c = cache[req.params.name]
+      if (!c) return res.status(404).json({ error: 'cache not found' })
+      res.json({ name: req.params.name, stats: c.stats() })
+    })
+  }
 
   router.get('/api/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream')
@@ -281,6 +320,7 @@ export function prsmDevtools(options = {}) {
           return {
             id,
             metadata,
+            ...displayFor(metadata),
             local: !!local,
             latency: local?.latency?.ms ?? null,
             alive: local?.alive ?? null,
@@ -370,6 +410,7 @@ export function prsmDevtools(options = {}) {
         res.json({
           id,
           metadata,
+          ...displayFor(metadata),
           rooms,
           presence,
           channels,

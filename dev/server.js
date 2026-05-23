@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import { createServer as createHttpServer } from 'node:http'
 import Queue from '@prsm/queue'
 import { Cron } from '@prsm/cron'
 import { slidingWindow, tokenBucket } from '@prsm/limit'
@@ -7,6 +8,9 @@ import { createGraph } from '@prsm/cells'
 import { mutex, semaphore } from '@prsm/lock'
 import WorkflowEngine, { defineWorkflow } from '@prsm/workflow'
 import { postgresDriver } from '@prsm/workflow/postgres'
+import { RealtimeServer } from '@prsm/realtime'
+import { RealtimeClient } from '@prsm/realtime/client'
+import { createCache } from '@prsm/cache'
 import { prsmDevtools } from '../src/index.js'
 
 const app = express()
@@ -339,6 +343,160 @@ setInterval(() => {
   for (const id of heldSlots) workerSlots.renew('task-runners', id).catch(() => {})
 }, 12000)
 
+const realtime = new RealtimeServer({
+  redis: { host: '127.0.0.1', port: 6379 },
+  authenticateConnection: (req) => {
+    const url = new URL(req.url, 'http://localhost')
+    const user = url.searchParams.get('user') ?? `guest-${Math.random().toString(36).slice(2, 6)}`
+    const role = url.searchParams.get('role') ?? 'viewer'
+    return { user, role }
+  },
+})
+
+realtime.exposeChannel(/^notifications$/)
+realtime.exposeChannel(/^metrics:.+$/)
+realtime.exposeChannel(/^chat:.+$/)
+
+realtime.exposeRecord(/^doc:.+$/)
+realtime.exposeRecord(/^cursor:.+$/)
+realtime.exposeRecord(/^msg:.+$/)
+realtime.exposeWritableRecord(/^cursor:.+$/)
+
+const INBOX_MESSAGES = [
+  { id: 'msg:1', subject: 'Welcome to prsm devtools', from: 'system', body: 'Realtime fixtures are live.' },
+  { id: 'msg:2', subject: 'Your nightly build is ready', from: 'ci-bot', body: 'devtools@1.2.0 published successfully.' },
+  { id: 'msg:3', subject: 'New issue filed: TICKET-471', from: 'amara', body: 'Limit panel chart is off by one tick.' },
+  { id: 'msg:4', subject: 'Workflow ticket-triage failed twice', from: 'monitoring', body: 'Classifier timed out on inputs of length > 200.' },
+  { id: 'msg:5', subject: 'Cron heartbeat skipped on instance-b', from: 'monitoring', body: 'Possible leader-election hiccup at 11:42.' },
+]
+
+for (const msg of INBOX_MESSAGES) {
+  await realtime.writeRecord(msg.id, {
+    ...msg,
+    read: Math.random() < 0.4,
+    receivedAt: Date.now() - Math.floor(Math.random() * 600000),
+  })
+}
+
+realtime.exposeCollection(/^inbox$/, () => INBOX_MESSAGES.map((m) => ({ id: m.id })))
+
+realtime.trackPresence(/^room:.+$/)
+
+realtime.exposeCommand('echo', async (ctx) => ({ echoed: ctx.payload, by: ctx.connection.authData?.user }))
+realtime.exposeCommand('coin-flip', async () => ({ result: Math.random() < 0.5 ? 'heads' : 'tails' }))
+
+const DOC_BODIES = {
+  'doc:welcome': { title: 'Welcome', body: 'Edit this doc to see realtime updates.', revision: 1 },
+  'doc:roadmap': { title: 'Roadmap', items: ['ship devtools 1.2.0', 'add realtime fixtures', 'dogfood for a week'], revision: 1 },
+}
+
+for (const [id, value] of Object.entries(DOC_BODIES)) {
+  await realtime.writeRecord(id, value)
+}
+
+const NOTIFY_MESSAGES = [
+  { level: 'info', text: 'queue drained' },
+  { level: 'warn', text: 'cron job took longer than usual' },
+  { level: 'error', text: 'workflow ticket-triage failed' },
+  { level: 'info', text: 'new ticket assigned to amara' },
+  { level: 'info', text: 'lock released: report-generation' },
+]
+
+const CHAT_AUTHORS = ['amara', 'devon', 'priya', 'noor']
+const CHAT_LINES = [
+  'looking at the queue stats now',
+  'classifier is flaky again',
+  'i can take the next escalation',
+  'pushed a fix to the limiter',
+  'redis memory looks fine',
+  'should we bump the cron interval?',
+]
+
+setInterval(() => {
+  const msg = NOTIFY_MESSAGES[Math.floor(Math.random() * NOTIFY_MESSAGES.length)]
+  realtime.writeChannel('notifications', { ...msg, ts: Date.now() }).catch(() => {})
+}, 4000)
+
+setInterval(() => {
+  realtime.writeChannel('metrics:cpu', { value: Math.round(20 + Math.random() * 60), ts: Date.now() }).catch(() => {})
+  realtime.writeChannel('metrics:rps', { value: Math.round(50 + Math.random() * 200), ts: Date.now() }).catch(() => {})
+}, 2000)
+
+setInterval(() => {
+  const room = Math.random() < 0.6 ? 'chat:general' : 'chat:dev'
+  const author = CHAT_AUTHORS[Math.floor(Math.random() * CHAT_AUTHORS.length)]
+  const text = CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]
+  realtime.writeChannel(room, { author, text, ts: Date.now() }).catch(() => {})
+}, 3500)
+
+setInterval(async () => {
+  const id = Math.random() < 0.5 ? 'doc:welcome' : 'doc:roadmap'
+  const current = DOC_BODIES[id]
+  current.revision += 1
+  if (id === 'doc:welcome') {
+    current.body = `Edit this doc to see realtime updates. (rev ${current.revision})`
+  } else {
+    current.items = [...current.items.slice(-4), `revision ${current.revision} task`]
+  }
+  await realtime.writeRecord(id, current).catch(() => {})
+}, 7000)
+
+const userCache = createCache({
+  redis: { host: '127.0.0.1', port: 6379 },
+  prefix: 'demo-cache:users:',
+  defaultTtl: '30s',
+})
+const trendingCache = createCache({
+  redis: { host: '127.0.0.1', port: 6379 },
+  prefix: 'demo-cache:trending:',
+  defaultTtl: '5s',
+  defaultStaleWhile: '20s',
+})
+await userCache.ready()
+await trendingCache.ready()
+
+const FAKE_USERS = {
+  '1': { name: 'amara', tier: 'enterprise' },
+  '2': { name: 'devon', tier: 'pro' },
+  '3': { name: 'priya', tier: 'pro' },
+  '4': { name: 'noor', tier: 'free' },
+  '5': { name: 'kit', tier: 'free' },
+}
+
+async function loadUser(id) {
+  await delay(80 + Math.random() * 120)
+  return FAKE_USERS[id] ?? null
+}
+
+async function loadTrending() {
+  await delay(180 + Math.random() * 220)
+  const tags = ['ai', 'redis', 'esm', 'vite', 'pg', 'realtime', 'cache']
+  const shuffled = tags.slice().sort(() => Math.random() - 0.5).slice(0, 4)
+  return { tags: shuffled, generatedAt: Date.now() }
+}
+
+setInterval(() => {
+  const userId = String(1 + Math.floor(Math.random() * 5))
+  const tags = [`user:${userId}`, `tier:${FAKE_USERS[userId]?.tier ?? 'unknown'}`]
+  userCache.fetch(`user:${userId}`, () => loadUser(userId), { ttl: '30s', tags }).catch(() => {})
+}, 1100)
+
+setInterval(() => {
+  trendingCache.fetch('global', loadTrending, { ttl: '5s', staleWhile: '20s' }).catch(() => {})
+}, 700)
+
+setInterval(() => {
+  Promise.all([
+    userCache.fetch('user:1', () => loadUser('1')),
+    userCache.fetch('user:1', () => loadUser('1')),
+    userCache.fetch('user:1', () => loadUser('1')),
+  ]).catch(() => {})
+}, 9000)
+
+setInterval(() => {
+  userCache.invalidateTag('tier:pro').catch(() => {})
+}, 23000)
+
 app.use(
   '/devtools',
   prsmDevtools({
@@ -348,6 +506,12 @@ app.use(
     cells: { portfolio: g, health },
     workflow,
     lock: { jobs: jobLock, 'worker-slots': workerSlots },
+    realtime,
+    cache: { users: userCache, trending: trendingCache },
+    connectionDisplay: (metadata) => ({
+      label: metadata?.user,
+      sublabel: metadata?.role,
+    }),
   }),
 )
 
@@ -385,9 +549,61 @@ await queue.ready()
 await cron.start()
 await workflow.startWorker({ interval: '200ms' })
 
-app.listen(port, () => console.log(`devtools dev server on :${port}`))
+const httpServer = createHttpServer(app)
+await realtime.attach(httpServer, { port })
+console.log(`devtools dev server on :${port}`)
+
+const fakeUsers = [
+  { user: 'amara', role: 'admin' },
+  { user: 'devon', role: 'engineer' },
+  { user: 'priya', role: 'engineer' },
+  { user: 'noor', role: 'viewer' },
+]
+
+const simulatedClients = []
+
+async function spawnSimulatedClient({ user, role }) {
+  const url = `ws://127.0.0.1:${port}/?user=${encodeURIComponent(user)}&role=${encodeURIComponent(role)}`
+  const client = new RealtimeClient(url, { logLevel: 4 })
+  await client.connect()
+
+  const room = Math.random() < 0.6 ? 'room:lobby' : 'room:dev'
+  await client.joinRoom(room)
+  await client.publishPresenceState(room, { status: 'online', user, role })
+
+  await client.subscribeChannel('notifications', () => {})
+  await client.subscribeChannel('metrics:cpu', () => {})
+  if (Math.random() < 0.5) await client.subscribeChannel('chat:general', () => {})
+  if (role !== 'viewer') await client.subscribeChannel('chat:dev', () => {})
+
+  await client.subscribeRecord('doc:welcome', () => {})
+  if (role !== 'viewer') await client.subscribeRecord('doc:roadmap', () => {})
+
+  await client.subscribeCollection('inbox')
+
+  setInterval(() => {
+    client.writeRecord(`cursor:${user}`, { x: Math.round(Math.random() * 1000), y: Math.round(Math.random() * 600), ts: Date.now() }).catch(() => {})
+  }, 2500 + Math.random() * 1500)
+
+  setInterval(() => {
+    const statuses = ['online', 'idle', 'typing']
+    const status = statuses[Math.floor(Math.random() * statuses.length)]
+    client.publishPresenceState(room, { status, user, role }).catch(() => {})
+  }, 6000 + Math.random() * 3000)
+
+  return client
+}
+
+for (const u of fakeUsers) {
+  const c = await spawnSimulatedClient(u).catch((err) => { console.error('client spawn failed', u.user, err.message); return null })
+  if (c) simulatedClients.push(c)
+}
+
+console.log(`spawned ${simulatedClients.length} simulated realtime clients`)
 
 process.on('SIGINT', async () => {
+  for (const c of simulatedClients) await c.disconnect().catch(() => {})
+  await realtime.close?.().catch(() => {})
   await cron.stop()
   await queue.close()
   await apiLimiter.close()

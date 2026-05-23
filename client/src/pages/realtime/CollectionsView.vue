@@ -5,7 +5,7 @@
     description="Collections with active subscribers will appear here."
   />
   <template v-else>
-    <p class="rt-hint">Collections with active subscribers - expand a connection to see what the resolver returns for it.</p>
+    <p class="rt-hint">A collection is a per-connection index of record IDs. Each row below is one subscriber - the resolver was called for that connection and returned the list shown when expanded.</p>
     <Panel v-for="[collId, info] in collectionEntries" :key="collId">
       <template #header>
         <h3 class="rt-card-title">{{ collId }}</h3>
@@ -17,11 +17,20 @@
         </Badge>
       </template>
       <PanelSection flush>
+        <div class="coll-thead">
+          <span>Subscriber</span>
+          <span>Version</span>
+          <span></span>
+        </div>
         <div v-for="(sub, connId) in info.subscribers" :key="connId" class="coll-sub">
           <div class="rt-row">
-            <button type="button" class="rt-conn" :title="connId" @click="$emit('navigate', connId)">
-              {{ connId.slice(0, 8) }}
-            </button>
+            <ConnectionChip
+              :connection-id="connId"
+              :connections="connections"
+              interactive
+              show-sublabel
+              @navigate="$emit('navigate', $event)"
+            />
             <span class="coll-version">v{{ sub.version }}</span>
             <Button variant="ghost" size="sm" @click="toggleRecords(collId, connId)">
               {{ loadedRecords[recordKey(collId, connId)] ? 'Hide records' : 'Show records' }}
@@ -57,9 +66,11 @@ import PanelSection from '../../ui/components/PanelSection.vue'
 import Badge from '../../ui/components/Badge.vue'
 import Button from '../../ui/components/Button.vue'
 import EmptyState from '../../ui/components/EmptyState.vue'
+import ConnectionChip from '../../components/ConnectionChip.vue'
 
 const props = defineProps({
   collections: { type: Object, default: () => ({}) },
+  connections: { type: Array, default: () => [] },
   fetchRecords: { type: Function, required: true },
 })
 
@@ -98,26 +109,29 @@ async function toggleRecords(collId, connId) {
 .coll-sub { border-top: 1px solid var(--ink-08); }
 .coll-sub:first-child { border-top: 0; }
 .rt-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 80px 140px;
   align-items: center;
   gap: 12px;
   padding: 10px 24px;
 }
-.rt-conn {
+.coll-thead {
+  display: grid;
+  grid-template-columns: 1fr 80px 140px;
+  gap: 12px;
+  padding: 8px 24px;
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  cursor: pointer;
-  border-bottom: 1px solid var(--ink-20);
-  padding-bottom: 1px;
-  transition: border-color 120ms ease;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-40);
+  background: var(--ink-04);
+  border-bottom: 1px solid var(--ink-08);
 }
-.rt-conn:hover { border-bottom-color: var(--ink); }
 .coll-version {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-40);
-  margin-right: auto;
 }
 .coll-records {
   padding: 14px 24px 18px;

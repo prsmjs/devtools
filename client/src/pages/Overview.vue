@@ -50,6 +50,7 @@ watch(
     if (config.limit?.length) keys.push('limit')
     if (config.workflow) keys.push('workflow')
     if (config.cells?.length) keys.push('cells')
+    if (config.cache?.length) keys.push('cache')
     enabled.value = keys
   },
   { immediate: true, deep: true }
@@ -61,6 +62,7 @@ const subsystemOptions = computed(() => [
   { value: 'limit', label: 'Limit', disabled: !props.config?.limit?.length },
   { value: 'workflow', label: 'Workflow', disabled: !props.config?.workflow },
   { value: 'cells', label: 'Cells', disabled: !props.config?.cells?.length },
+  { value: 'cache', label: 'Cache', disabled: !props.config?.cache?.length },
 ])
 
 const today = computed(() =>

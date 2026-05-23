@@ -12,11 +12,13 @@ import WorkflowExecutionsPage from './pages/WorkflowExecutions.vue'
 import RealtimePage from './pages/Realtime.vue'
 import CellsPage from './pages/Cells.vue'
 import LocksPage from './pages/Locks.vue'
+import CachePage from './pages/Cache.vue'
 import RoomsView from './pages/realtime/RoomsView.vue'
 import ChannelsView from './pages/realtime/ChannelsView.vue'
 import CollectionsView from './pages/realtime/CollectionsView.vue'
 import RecordsView from './pages/realtime/RecordsView.vue'
 import MetadataView from './pages/realtime/MetadataView.vue'
+import ExposedView from './pages/realtime/ExposedView.vue'
 
 const router = createRouter({
   history: createWebHistory(base),
@@ -32,10 +34,12 @@ const router = createRouter({
         { path: 'collections', component: CollectionsView },
         { path: 'records', component: RecordsView },
         { path: 'metadata', component: MetadataView },
+        { path: 'exposed', component: ExposedView },
       ],
     },
     { path: '/cells', component: CellsPage },
     { path: '/locks', component: LocksPage },
+    { path: '/cache', component: CachePage },
     { path: '/queue', component: QueuePage },
     { path: '/cron', component: CronPage },
     { path: '/limits', component: LimitsPage },
