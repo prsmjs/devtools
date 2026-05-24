@@ -275,8 +275,8 @@ export function prsmDevtools(options = {}) {
   }
 
   if (cron) {
-    cron.on('fire', (data) => broadcast('cron:fire', { name: data.name, tickId: data.tickId }))
-    cron.on('error', (data) => broadcast('cron:error', { name: data.name, error: data.error?.message }))
+    cron.on('fire', (data) => broadcast('cron:fire', { name: data.name, tickId: data.tickId, instanceId: data.instanceId }))
+    cron.on('error', (data) => broadcast('cron:error', { name: data.name, error: data.error?.message, instanceId: data.instanceId }))
   }
 
   if (cellGraphs) {

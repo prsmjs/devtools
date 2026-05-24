@@ -125,11 +125,12 @@ onBeforeUnmount(() => {
               Loader calls avoided by deduplicating concurrent misses for the same key.
             </p>
           </PanelSection>
-          <PanelSection v-if="eventsFor(name).length" label="Recent activity">
+          <PanelSection v-if="eventsFor(name).length" label="Recent activity (across all instances)">
             <ul class="events">
               <li v-for="(e, i) in eventsFor(name)" :key="i" class="event">
                 <Badge :variant="eventTone(e.kind)" size="sm">{{ eventLabel(e.kind) }}</Badge>
                 <code class="event__key">{{ eventTarget(e) }}</code>
+                <span v-if="e.data?.instanceId" class="event__instance" :title="e.data.instanceId">{{ e.data.instanceId.slice(0, 6) }}</span>
                 <span class="event__ts">{{ new Date(e.ts).toLocaleTimeString() }}</span>
               </li>
             </ul>
@@ -200,6 +201,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.event__instance {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-40);
+  flex-shrink: 0;
 }
 .event__ts {
   font-family: var(--mono);

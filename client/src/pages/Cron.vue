@@ -84,7 +84,7 @@ async function runJob(name) {
     <PageHeader
       eyebrow="Scheduler"
       title="Cron"
-      subtitle="Registered scheduled jobs with live countdowns to their next fire, and a log of fires and errors."
+      subtitle="Registered jobs with live countdowns to their next fire. Fires and errors are aggregated across every instance running this cron."
     />
 
     <div class="page-body">
@@ -121,13 +121,14 @@ async function runJob(name) {
       </section>
 
       <section class="page-section">
-        <Panel title="Events" description="Fires and errors, newest first.">
+        <Panel title="Events" description="Fires and errors from every instance, newest first.">
           <div v-if="cronEvents.length" class="stream">
             <div v-for="(evt, i) in cronEvents" :key="i" class="event">
               <Badge :variant="evt.type.split(':')[1] === 'error' ? 'failed' : 'active'" size="sm">
                 {{ evt.type.split(':')[1] }}
               </Badge>
               <span class="event__name">{{ evt.data.name }}</span>
+              <span v-if="evt.data.instanceId" class="event__instance" :title="evt.data.instanceId">instance {{ evt.data.instanceId.slice(0, 6) }}</span>
               <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
             </div>
           </div>
@@ -187,8 +188,15 @@ async function runJob(name) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.event__instance {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-40);
+}
 .event__time {
   flex-shrink: 0;
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--ink-40);
