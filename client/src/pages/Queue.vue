@@ -253,7 +253,7 @@ const EVENT_VARIANT = {
         </div>
       </section>
 
-      <section class="page-section">
+      <section class="page-section split">
         <Panel title="Status" description="Current activity and recent outcomes.">
           <div class="kv-pad">
             <KeyValue layout="divided" :items="statusItems">
@@ -263,15 +263,15 @@ const EVENT_VARIANT = {
             </KeyValue>
           </div>
         </Panel>
-      </section>
 
-      <section class="page-section split">
         <Panel title="Configuration" description="Limits and timings for this queue.">
           <div class="kv-pad">
             <KeyValue layout="divided" :items="configItems" />
           </div>
         </Panel>
+      </section>
 
+      <section class="page-section">
         <Panel title="Groups" description="Click a row to focus tasks and history below.">
           <div v-if="groupsView.length" class="groups">
             <div class="groups__head">
