@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
+import KeyValue from '../ui/components/KeyValue.vue'
 import Badge from '../ui/components/Badge.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import Tabs from '../ui/components/Tabs.vue'
@@ -183,6 +184,23 @@ function fmtMs(value) {
   return `${Math.floor(value / 60_000)}m`
 }
 
+const statusItems = computed(() => [
+  { label: 'In-flight', value: stats.value.inFlight },
+  { label: 'Queued', value: stats.value.depth },
+  { label: 'Completed', value: sessionCounts.value.complete },
+  { label: 'Failed', value: sessionCounts.value.failed, tone: sessionCounts.value.failed ? 'failed' : null },
+  { label: 'Retried', value: sessionCounts.value.retry, tone: sessionCounts.value.retry ? 'paused' : null },
+])
+
+const configItems = computed(() => [
+  { label: 'Concurrency', value: opts.value.concurrency ?? '-' },
+  { label: 'Global concurrency', value: opts.value.globalConcurrency || 'disabled' },
+  { label: 'Timeout', value: fmtMs(opts.value.timeout) },
+  { label: 'Delay', value: fmtMs(opts.value.delay) },
+  { label: 'Max retries', value: opts.value.maxRetries ?? '-' },
+  { label: 'Group concurrency', value: opts.value.groups?.concurrency ?? '-' },
+])
+
 const HISTORY_VARIANT = {
   complete: 'active',
   failed: 'failed',
@@ -224,48 +242,21 @@ const EVENT_VARIANT = {
 
       <section class="page-section">
         <Panel title="Status" description="Current activity and recent outcomes.">
-          <div class="q-counts">
-            <span class="q-counts__stat"><strong>{{ stats.inFlight }}</strong> in-flight</span>
-            <span class="q-counts__sep" />
-            <span class="q-counts__stat"><strong>{{ stats.depth }}</strong> queued</span>
-            <span class="q-counts__sep" />
-            <span class="q-counts__stat"><strong>{{ sessionCounts.complete }}</strong> completed</span>
-            <span class="q-counts__sep" />
-            <span class="q-counts__stat" :style="sessionCounts.failed ? 'color: var(--status-failed)' : ''"><strong>{{ sessionCounts.failed }}</strong> failed</span>
-            <span class="q-counts__sep" />
-            <span class="q-counts__stat" :style="sessionCounts.retry ? 'color: var(--status-paused)' : ''"><strong>{{ sessionCounts.retry }}</strong> retried</span>
+          <div class="kv-pad">
+            <KeyValue layout="divided" :items="statusItems">
+              <template #value="{ item }">
+                <span :style="item.tone === 'failed' ? 'color: var(--status-failed)' : item.tone === 'paused' ? 'color: var(--status-paused)' : ''">{{ item.value }}</span>
+              </template>
+            </KeyValue>
           </div>
         </Panel>
       </section>
 
       <section class="page-section split">
         <Panel title="Configuration" description="Limits and timings for this queue.">
-          <dl class="config-list">
-            <div class="config-row">
-              <dt>Concurrency</dt>
-              <dd>{{ opts.concurrency ?? '-' }}</dd>
-            </div>
-            <div class="config-row">
-              <dt>Global concurrency</dt>
-              <dd>{{ opts.globalConcurrency || 'disabled' }}</dd>
-            </div>
-            <div class="config-row">
-              <dt>Timeout</dt>
-              <dd>{{ fmtMs(opts.timeout) }}</dd>
-            </div>
-            <div class="config-row">
-              <dt>Delay</dt>
-              <dd>{{ fmtMs(opts.delay) }}</dd>
-            </div>
-            <div class="config-row">
-              <dt>Max retries</dt>
-              <dd>{{ opts.maxRetries ?? '-' }}</dd>
-            </div>
-            <div class="config-row">
-              <dt>Group concurrency</dt>
-              <dd>{{ opts.groups?.concurrency ?? '-' }}</dd>
-            </div>
-          </dl>
+          <div class="kv-pad">
+            <KeyValue layout="divided" :items="configItems" />
+          </div>
         </Panel>
 
         <Panel title="Groups" description="Click a row to focus tasks and history below.">
@@ -301,17 +292,19 @@ const EVENT_VARIANT = {
           :title="`Live tasks${groupFocus ? ` - ${groupFocus}` : ''}`"
           :description="liveTasks.length ? 'Tasks currently in-flight on this instance.' : 'No tasks running right now.'"
         >
-          <div v-if="liveTasks.length" class="stream">
-            <div v-for="task in liveTasks" :key="task.uuid" class="task">
-              <span class="task__uuid">{{ task.uuid.slice(0, 8) }}</span>
-              <Badge v-if="task.group" variant="default" size="sm">{{ task.group }}</Badge>
-              <Badge v-else variant="default" size="sm">default</Badge>
-              <span class="task__worker">{{ task.workerId }}</span>
-              <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
-              <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
-            </div>
+          <div class="stream stream--fixed">
+            <template v-if="liveTasks.length">
+              <div v-for="task in liveTasks" :key="task.uuid" class="task">
+                <span class="task__uuid">{{ task.uuid.slice(0, 8) }}</span>
+                <Badge v-if="task.group" variant="default" size="sm">{{ task.group }}</Badge>
+                <Badge v-else variant="default" size="sm">default</Badge>
+                <span class="task__worker">{{ task.workerId }}</span>
+                <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
+                <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
+              </div>
+            </template>
+            <EmptyState v-else title="No tasks running" />
           </div>
-          <EmptyState v-else title="No tasks running" />
         </Panel>
       </section>
 
@@ -370,18 +363,7 @@ const EVENT_VARIANT = {
   align-items: center;
 }
 
-.q-counts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 18px 24px;
-  font-size: 13px;
-  color: var(--ink-60);
-}
-.q-counts__stat { font-variant-numeric: tabular-nums; }
-.q-counts__stat strong { font-weight: 500; color: var(--ink); margin-right: 4px; }
-.q-counts__sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
+.kv-pad { padding: 4px 24px 16px; }
 
 .split {
   display: grid;
@@ -390,35 +372,6 @@ const EVENT_VARIANT = {
 }
 @media (max-width: 880px) {
   .split { grid-template-columns: 1fr; }
-}
-
-.config-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-}
-.config-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  border-top: 1px solid var(--ink-08);
-  font-size: 13px;
-}
-.config-row:first-child { border-top: 0; }
-.config-row dt {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-40);
-}
-.config-row dd {
-  margin: 0;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
 }
 
 .groups {
@@ -481,6 +434,7 @@ const EVENT_VARIANT = {
 }
 
 .stream { max-height: 480px; overflow-y: auto; }
+.stream--fixed { height: 280px; overflow-y: auto; }
 .stream--compact { max-height: 320px; }
 
 .task, .event {
