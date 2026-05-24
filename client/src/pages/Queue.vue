@@ -7,6 +7,7 @@ import Panel from '../ui/components/Panel.vue'
 import KeyValue from '../ui/components/KeyValue.vue'
 import ScrollArea from '../ui/components/ScrollArea.vue'
 import Badge from '../ui/components/Badge.vue'
+import JsonView from '../components/JsonView.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import Tabs from '../ui/components/Tabs.vue'
 import FilterChip from '../ui/components/FilterChip.vue'
@@ -317,7 +318,9 @@ const EVENT_VARIANT = {
                   <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
                   <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
                 </button>
-                <pre v-if="expanded.has(`live:${task.uuid}`)" class="payload">{{ formatPayload(task.payload) }}</pre>
+                <div v-if="expanded.has(`live:${task.uuid}`)" class="payload">
+                  <JsonView :data="task.payload" />
+                </div>
               </div>
             </template>
             <EmptyState v-else title="No tasks running" />
@@ -353,7 +356,9 @@ const EVENT_VARIANT = {
                   <span v-else-if="e.kind === 'retry'" class="event__attempt">attempt {{ e.attempt }}</span>
                   <span class="event__time">{{ new Date(e.ts).toLocaleTimeString() }}</span>
                 </button>
-                <pre v-if="expanded.has(`hist:${e.task?.uuid ?? i}:${e.ts}`)" class="payload">{{ formatPayload(e.task?.payload) }}</pre>
+                <div v-if="expanded.has(`hist:${e.task?.uuid ?? i}:${e.ts}`)" class="payload">
+                  <JsonView :data="e.task?.payload" />
+                </div>
               </div>
             </template>
             <EmptyState v-else title="No matching tasks" />
@@ -365,13 +370,15 @@ const EVENT_VARIANT = {
         <Panel title="Live events" description="Raw event stream for this queue, newest first.">
           <ScrollArea max-height="320px">
             <template v-if="queueEvents.length">
-              <div v-for="(evt, i) in queueEvents" :key="i" class="event">
-                <Badge :variant="EVENT_VARIANT[evt.type.split(':')[1]] || 'default'" size="sm">
-                  {{ evt.type.split(':')[1] }}
-                </Badge>
-                <span class="event__uuid">{{ evt.data?.task?.uuid?.slice(0, 8) ?? '-' }}</span>
-                <Badge v-if="evt.data?.task?.group" variant="default" size="sm">{{ evt.data.task.group }}</Badge>
-                <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
+              <div v-for="(evt, i) in queueEvents" :key="i" class="row-wrap">
+                <div class="row row--static">
+                  <Badge :variant="EVENT_VARIANT[evt.type.split(':')[1]] || 'default'" size="sm">
+                    {{ evt.type.split(':')[1] }}
+                  </Badge>
+                  <span class="event__uuid">{{ evt.data?.task?.uuid?.slice(0, 8) ?? '-' }}</span>
+                  <Badge v-if="evt.data?.task?.group" variant="default" size="sm">{{ evt.data.task.group }}</Badge>
+                  <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
+                </div>
               </div>
             </template>
             <EmptyState v-else title="No events yet" />
@@ -475,7 +482,8 @@ const EVENT_VARIANT = {
   color: inherit;
   transition: background 0.1s;
 }
-.row:hover { background: var(--ink-04); }
+.row:not(.row--static):hover { background: var(--ink-04); }
+.row--static { cursor: default; }
 
 .row__caret {
   font-size: 10px;
@@ -545,6 +553,7 @@ const EVENT_VARIANT = {
 .event__time {
   flex-shrink: 0;
   margin-left: auto;
+  padding-left: 8px;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--ink-40);
