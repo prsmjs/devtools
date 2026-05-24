@@ -318,19 +318,18 @@ const historyItems = computed(() =>
       eyebrow="Reactive graphs"
       title="Cells"
       subtitle="Inspect reactive computation graphs - values, dependencies, and live propagation."
-    >
-      <template #actions>
+    />
+
+    <div class="page-body">
+      <section v-if="graphs.length > 1" class="page-section">
         <Tabs
-          v-if="graphs.length > 1"
           :model-value="currentGraph"
           :tabs="graphs.map((g) => ({ value: g, label: g }))"
           variant="pills"
           @update:model-value="currentGraph = $event"
         />
-      </template>
-    </PageHeader>
+      </section>
 
-    <div class="page-body">
       <section class="page-section">
         <div class="cells-toolbar">
           <Tabs

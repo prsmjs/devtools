@@ -8,7 +8,7 @@ import Card from '../ui/components/Card.vue'
 import Stat from '../ui/components/Stat.vue'
 import Badge from '../ui/components/Badge.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
-import SegmentedControl from '../ui/components/SegmentedControl.vue'
+import Tabs from '../ui/components/Tabs.vue'
 import FilterChip from '../ui/components/FilterChip.vue'
 
 const snapshot = ref({})
@@ -76,7 +76,7 @@ watch(selected, async () => {
   await pollHistory()
 })
 
-const queueOptions = computed(() =>
+const queueTabs = computed(() =>
   queues.value.map((name) => ({ value: name, label: name }))
 )
 
@@ -206,17 +206,22 @@ const EVENT_VARIANT = {
       eyebrow="Job queue"
       title="Queue"
       subtitle="Per-queue state, groups, and recent tasks. Click a group to focus the live tasks and history."
-    >
-      <template v-if="queueOptions.length > 1" #actions>
-        <SegmentedControl v-model="selected" :options="queueOptions" size="sm" />
-      </template>
-    </PageHeader>
+    />
 
     <div v-if="!selected" class="page-body">
       <Panel><EmptyState title="No queue connected" /></Panel>
     </div>
 
     <div v-else class="page-body">
+      <section v-if="queueTabs.length > 1" class="page-section">
+        <Tabs
+          :model-value="selected"
+          :tabs="queueTabs"
+          variant="pills"
+          @update:model-value="selected = $event"
+        />
+      </section>
+
       <section class="page-section">
         <div class="stats-grid">
           <Card padded>
