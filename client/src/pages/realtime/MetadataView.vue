@@ -93,9 +93,11 @@
       </div>
     </section>
 
-    <details v-if="hasMetadata" class="md-raw">
+    <details v-if="hasMetadata" class="md-raw" open>
       <summary>Raw connection metadata</summary>
-      <JsonView :data="detail.metadata" />
+      <div class="md-raw__body">
+        <JsonView :data="detail.metadata" />
+      </div>
     </details>
   </div>
 
@@ -374,6 +376,7 @@ function formatValue(v) {
   cursor: pointer;
 }
 .md-raw[open] summary { border-bottom: 1px solid var(--ink-08); margin-bottom: 10px; }
+.md-raw__body { padding-bottom: 14px; }
 
 .md-list { display: flex; flex-direction: column; gap: 8px; }
 .rt-hint {
