@@ -519,11 +519,46 @@ export function prsmDevtools(options = {}) {
   }
 
   if (workflow) {
-    router.get('/api/workflows', (_req, res) => {
-      const workflows = workflow.listWorkflows().map((item) => ({
+    router.get('/api/workflows', async (_req, res) => {
+      const localList = workflow.listWorkflows()
+      const localKey = (w) => `${w.name}@${w.version}`
+      const workflows = localList.map((item) => ({
         ...item,
         graph: workflow.describe(item.name, item.version).graph,
       }))
+
+      // attribution + mismatch detection across instances (when pubsub configured)
+      let acrossInstances = null
+      try {
+        if (typeof workflow.listWorkflowsAcrossInstances === 'function') {
+          acrossInstances = await workflow.listWorkflowsAcrossInstances()
+        }
+      } catch {}
+
+      if (acrossInstances) {
+        const instanceIds = Object.keys(acrossInstances)
+        const presence = {}
+        for (const [instId, list] of Object.entries(acrossInstances)) {
+          for (const w of list) {
+            const k = `${w.name}@${w.version}`
+            if (!presence[k]) presence[k] = { name: w.name, version: w.version, description: w.description, presentOn: [] }
+            if (!presence[k].presentOn.includes(instId)) presence[k].presentOn.push(instId)
+          }
+        }
+        // mark each local workflow with presence info; add remote-only ones too
+        const enriched = workflows.map((w) => ({
+          ...w,
+          presentOn: presence[localKey(w)]?.presentOn ?? [],
+        }))
+        for (const [k, info] of Object.entries(presence)) {
+          if (!enriched.some((w) => `${w.name}@${w.version}` === k)) {
+            enriched.push({ ...info, graph: null, localOnly: false })
+          }
+        }
+        const mismatches = Object.values(presence).filter((p) => p.presentOn.length !== instanceIds.length)
+        return res.json({ workflows: enriched, instances: instanceIds, mismatches })
+      }
+
       res.json({ workflows })
     })
 
@@ -685,7 +720,7 @@ export function prsmDevtools(options = {}) {
           })
         }
 
-        const exposed = {
+        const localExposed = {
           channels: realtime.channelManager.exposedChannels.map(patternToString),
           records: realtime.recordSubscriptionManager.exposedRecords.map(patternToString),
           writableRecords: realtime.recordSubscriptionManager.exposedWritableRecords.map(patternToString),
@@ -694,6 +729,42 @@ export function prsmDevtools(options = {}) {
           commands: realtime.commandManager.commands
             ? Object.keys(realtime.commandManager.commands).filter((c) => !c.startsWith('rt/'))
             : [],
+        }
+
+        let exposedPerInstance = null
+        try {
+          if (typeof realtime.getExposedRegistryAcrossInstances === 'function') {
+            exposedPerInstance = await realtime.getExposedRegistryAcrossInstances()
+          }
+        } catch {}
+
+        const exposed = { ...localExposed }
+        if (exposedPerInstance) {
+          // union with attribution: for each kind, build { pattern -> [instanceIds] }
+          const buckets = { channels: {}, records: {}, writableRecords: {}, collections: {}, presence: {}, commands: {} }
+          for (const [instId, snap] of Object.entries(exposedPerInstance)) {
+            for (const kind of Object.keys(buckets)) {
+              for (const item of (snap[kind] ?? [])) {
+                if (!buckets[kind][item]) buckets[kind][item] = []
+                if (!buckets[kind][item].includes(instId)) buckets[kind][item].push(instId)
+              }
+            }
+          }
+          exposed.union = buckets
+          // mismatches: any pattern not present on every known instance
+          const instanceIds = Object.keys(exposedPerInstance)
+          const mismatches = {}
+          for (const kind of Object.keys(buckets)) {
+            const off = []
+            for (const [item, presentOn] of Object.entries(buckets[kind])) {
+              if (presentOn.length !== instanceIds.length) {
+                off.push({ item, presentOn, missingOn: instanceIds.filter((id) => !presentOn.includes(id)) })
+              }
+            }
+            if (off.length) mismatches[kind] = off
+          }
+          exposed.mismatches = mismatches
+          exposed.instances = instanceIds
         }
 
         res.json({ instanceId: realtime.instanceId, connections, rooms, channels, collections, records, exposed })
@@ -819,7 +890,7 @@ export function prsmDevtools(options = {}) {
   }
 
   if (cellGraphs) {
-    router.get('/api/cells/:graph', (req, res) => {
+    router.get('/api/cells/:graph', async (req, res) => {
       const g = cellGraphs[req.params.graph]
       if (!g) return res.status(404).json({ error: 'graph not found' })
       const topology = g.cells()
@@ -834,6 +905,37 @@ export function prsmDevtools(options = {}) {
           computeTime: state?.computeTime ?? null,
         }
       })
+
+      // cross-instance attribution + mismatches (distributed mode only)
+      let acrossInstances = null
+      try {
+        if (typeof g.cellsAcrossInstances === 'function') {
+          acrossInstances = await g.cellsAcrossInstances()
+        }
+      } catch {}
+
+      if (acrossInstances) {
+        const instanceIds = Object.keys(acrossInstances)
+        const presence = {}
+        for (const [instId, list] of Object.entries(acrossInstances)) {
+          for (const c of list) {
+            if (!presence[c.name]) presence[c.name] = { presentOn: [] }
+            if (!presence[c.name].presentOn.includes(instId)) presence[c.name].presentOn.push(instId)
+          }
+        }
+        const enrichedWithPresence = enriched.map((c) => ({ ...c, presentOn: presence[c.name]?.presentOn ?? [] }))
+        // include any remote-only cells
+        for (const [name, info] of Object.entries(presence)) {
+          if (!enrichedWithPresence.some((c) => c.name === name)) {
+            enrichedWithPresence.push({ name, presentOn: info.presentOn, remoteOnly: true })
+          }
+        }
+        const mismatches = Object.entries(presence)
+          .filter(([, info]) => info.presentOn.length !== instanceIds.length)
+          .map(([name, info]) => ({ name, presentOn: info.presentOn, missingOn: instanceIds.filter((id) => !info.presentOn.includes(id)) }))
+        return res.json({ graph: req.params.graph, cells: enrichedWithPresence, instances: instanceIds, mismatches })
+      }
+
       res.json({ graph: req.params.graph, cells: enriched })
     })
 
