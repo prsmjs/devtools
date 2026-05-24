@@ -288,6 +288,7 @@ const workflow = new WorkflowEngine({
   storage: postgresDriver({
     connectionString: 'postgres://devtools:devtools_password@localhost:5544/devtools',
   }),
+  pubsub: { socket: { host: '127.0.0.1', port: 6379 } },
   owner: 'devtools-dev',
   leaseMs: '30s',
   tracer,
