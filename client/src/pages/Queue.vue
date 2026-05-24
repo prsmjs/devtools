@@ -223,51 +223,51 @@ const EVENT_VARIANT = {
       </section>
 
       <section class="page-section">
-        <div class="q-counts">
-          <span class="q-counts__stat"><strong>{{ stats.inFlight }}</strong> in-flight</span>
-          <span class="q-counts__sep" />
-          <span class="q-counts__stat"><strong>{{ stats.depth }}</strong> queued</span>
-          <span class="q-counts__sep" />
-          <span class="q-counts__stat"><strong>{{ sessionCounts.complete }}</strong> completed</span>
-          <span class="q-counts__sep" />
-          <span class="q-counts__stat" :style="sessionCounts.failed ? 'color: var(--status-failed)' : ''"><strong>{{ sessionCounts.failed }}</strong> failed</span>
-          <span class="q-counts__sep" />
-          <span class="q-counts__stat" :style="sessionCounts.retry ? 'color: var(--status-paused)' : ''"><strong>{{ sessionCounts.retry }}</strong> retried</span>
-        </div>
-      </section>
-
-      <section class="page-section">
-        <Panel title="Configuration" description="Limits and timings for this queue.">
-          <div class="config-grid">
-            <div class="config-cell">
-              <span class="config-cell__label">Concurrency</span>
-              <span class="config-cell__value">{{ opts.concurrency ?? '-' }}</span>
-            </div>
-            <div class="config-cell">
-              <span class="config-cell__label">Global concurrency</span>
-              <span class="config-cell__value">{{ opts.globalConcurrency || 'disabled' }}</span>
-            </div>
-            <div class="config-cell">
-              <span class="config-cell__label">Timeout</span>
-              <span class="config-cell__value">{{ fmtMs(opts.timeout) }}</span>
-            </div>
-            <div class="config-cell">
-              <span class="config-cell__label">Delay</span>
-              <span class="config-cell__value">{{ fmtMs(opts.delay) }}</span>
-            </div>
-            <div class="config-cell">
-              <span class="config-cell__label">Max retries</span>
-              <span class="config-cell__value">{{ opts.maxRetries ?? '-' }}</span>
-            </div>
-            <div class="config-cell">
-              <span class="config-cell__label">Group concurrency</span>
-              <span class="config-cell__value">{{ opts.groups?.concurrency ?? '-' }}</span>
-            </div>
+        <Panel title="Status" description="Current activity and recent outcomes.">
+          <div class="q-counts">
+            <span class="q-counts__stat"><strong>{{ stats.inFlight }}</strong> in-flight</span>
+            <span class="q-counts__sep" />
+            <span class="q-counts__stat"><strong>{{ stats.depth }}</strong> queued</span>
+            <span class="q-counts__sep" />
+            <span class="q-counts__stat"><strong>{{ sessionCounts.complete }}</strong> completed</span>
+            <span class="q-counts__sep" />
+            <span class="q-counts__stat" :style="sessionCounts.failed ? 'color: var(--status-failed)' : ''"><strong>{{ sessionCounts.failed }}</strong> failed</span>
+            <span class="q-counts__sep" />
+            <span class="q-counts__stat" :style="sessionCounts.retry ? 'color: var(--status-paused)' : ''"><strong>{{ sessionCounts.retry }}</strong> retried</span>
           </div>
         </Panel>
       </section>
 
-      <section class="page-section">
+      <section class="page-section split">
+        <Panel title="Configuration" description="Limits and timings for this queue.">
+          <dl class="config-list">
+            <div class="config-row">
+              <dt>Concurrency</dt>
+              <dd>{{ opts.concurrency ?? '-' }}</dd>
+            </div>
+            <div class="config-row">
+              <dt>Global concurrency</dt>
+              <dd>{{ opts.globalConcurrency || 'disabled' }}</dd>
+            </div>
+            <div class="config-row">
+              <dt>Timeout</dt>
+              <dd>{{ fmtMs(opts.timeout) }}</dd>
+            </div>
+            <div class="config-row">
+              <dt>Delay</dt>
+              <dd>{{ fmtMs(opts.delay) }}</dd>
+            </div>
+            <div class="config-row">
+              <dt>Max retries</dt>
+              <dd>{{ opts.maxRetries ?? '-' }}</dd>
+            </div>
+            <div class="config-row">
+              <dt>Group concurrency</dt>
+              <dd>{{ opts.groups?.concurrency ?? '-' }}</dd>
+            </div>
+          </dl>
+        </Panel>
+
         <Panel title="Groups" description="Click a row to focus tasks and history below.">
           <div v-if="groupsView.length" class="groups">
             <div class="groups__head">
@@ -375,6 +375,7 @@ const EVENT_VARIANT = {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+  padding: 18px 24px;
   font-size: 13px;
   color: var(--ink-60);
 }
@@ -382,30 +383,42 @@ const EVENT_VARIANT = {
 .q-counts__stat strong { font-weight: 500; color: var(--ink); margin-right: 4px; }
 .q-counts__sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
 
-.config-grid {
+.split {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1px;
-  background: var(--ink-08);
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
-.config-cell {
+@media (max-width: 880px) {
+  .split { grid-template-columns: 1fr; }
+}
+
+.config-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 20px;
-  background: var(--surface);
+  margin: 0;
 }
-.config-cell__label {
+.config-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--ink-08);
+  font-size: 13px;
+}
+.config-row:first-child { border-top: 0; }
+.config-row dt {
+  margin: 0;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-40);
 }
-.config-cell__value {
+.config-row dd {
+  margin: 0;
   font-family: var(--mono);
-  font-size: 14px;
-  color: var(--ink);
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .groups {
