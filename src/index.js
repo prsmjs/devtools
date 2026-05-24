@@ -13,6 +13,14 @@ function normalizeCellGraphs(cells) {
   return cells
 }
 
+function normalizeQueues(queue) {
+  if (!queue) return null
+  if (typeof queue.push === 'function' && typeof queue.process === 'function') {
+    return { default: queue }
+  }
+  return queue
+}
+
 function patternToString(p) {
   if (typeof p === 'string') return p
   if (p instanceof RegExp) return p.toString()
@@ -30,7 +38,9 @@ function patternToString(p) {
  */
 export function prsmDevtools(options = {}) {
   const router = Router()
-  const { queue, cron, limit, workflow, realtime, lock, cache, tracer } = options
+  const { cron, limit, workflow, realtime, lock, cache, tracer } = options
+  const queues = normalizeQueues(options.queue)
+  const queueHistoryLimit = options.queueHistorySize ?? 200
   const traceLimit = options.traceBufferSize ?? 50000
   const traceRetentionMs = options.traceRetentionMs ?? 60 * 60 * 1000
 
@@ -223,9 +233,44 @@ export function prsmDevtools(options = {}) {
     })
   }
 
-  if (queue) {
-    for (const event of ['new', 'complete', 'retry', 'failed', 'drain']) {
-      queue.on(event, (data) => broadcast(`queue:${event}`, data ?? {}))
+  const queueHistory = new Map()
+  if (queues) {
+    for (const [qName] of Object.entries(queues)) {
+      queueHistory.set(qName, [])
+    }
+    function pushQueueHistory(qName, kind, payload) {
+      const ring = queueHistory.get(qName)
+      if (!ring) return
+      ring.unshift({ kind, ts: Date.now(), ...payload })
+      if (ring.length > queueHistoryLimit) ring.length = queueHistoryLimit
+    }
+    function taskSummary(task) {
+      if (!task) return null
+      return { uuid: task.uuid, group: task.group ?? null, attempts: task.attempts, createdAt: task.createdAt }
+    }
+    for (const [qName, q] of Object.entries(queues)) {
+      q.on('new', (data) => {
+        const evt = { queue: qName, task: taskSummary(data?.task) }
+        broadcast('queue:new', evt)
+      })
+      q.on('complete', (data) => {
+        const entry = { task: taskSummary(data?.task), durationMs: data?.task ? Date.now() - data.task.createdAt : null }
+        pushQueueHistory(qName, 'complete', entry)
+        broadcast('queue:complete', { queue: qName, ...entry })
+      })
+      q.on('retry', (data) => {
+        const entry = { task: taskSummary(data?.task), attempt: data?.attempt, error: data?.error?.message ?? null }
+        pushQueueHistory(qName, 'retry', entry)
+        broadcast('queue:retry', { queue: qName, ...entry })
+      })
+      q.on('failed', (data) => {
+        const entry = { task: taskSummary(data?.task), error: data?.error?.message ?? null }
+        pushQueueHistory(qName, 'failed', entry)
+        broadcast('queue:failed', { queue: qName, ...entry })
+      })
+      q.on('drain', () => {
+        broadcast('queue:drain', { queue: qName })
+      })
     }
   }
 
@@ -270,7 +315,7 @@ export function prsmDevtools(options = {}) {
 
   router.get('/api/config', (_req, res) => {
     res.json({
-      queue: !!queue,
+      queue: queues ? Object.keys(queues) : [],
       cron: !!cron,
       limit: limit ? Object.keys(limit) : [],
       workflow: !!workflow,
@@ -371,9 +416,36 @@ export function prsmDevtools(options = {}) {
     req.on('close', () => sseClients.delete(res))
   })
 
-  if (queue) {
-    router.get('/api/queue', (_req, res) => {
-      res.json({ inFlight: queue.inFlight })
+  if (queues) {
+    router.get('/api/queue', async (_req, res) => {
+      const out = {}
+      for (const [name, q] of Object.entries(queues)) {
+        try {
+          out[name] = await q.snapshot()
+        } catch (err) {
+          out[name] = { error: err?.message ?? 'snapshot failed', inFlight: q.inFlight }
+        }
+      }
+      res.json(out)
+    })
+
+    router.get('/api/queue/:name', async (req, res) => {
+      const q = queues[req.params.name]
+      if (!q) return res.status(404).json({ error: 'queue not found' })
+      try {
+        const includePayload = req.query.payload === '1'
+        const snap = await q.snapshot({ includePayload })
+        res.json({ name: req.params.name, ...snap })
+      } catch (err) {
+        res.status(500).json({ error: err?.message ?? 'snapshot failed' })
+      }
+    })
+
+    router.get('/api/queue/:name/history', (req, res) => {
+      const ring = queueHistory.get(req.params.name)
+      if (!ring) return res.status(404).json({ error: 'queue not found' })
+      const limit = Math.min(Number(req.query.limit) || queueHistoryLimit, queueHistoryLimit)
+      res.json({ entries: ring.slice(0, limit) })
     })
   }
 

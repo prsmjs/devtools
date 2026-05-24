@@ -34,6 +34,20 @@ queue.process(async (payload) => {
   return { processed: true }
 })
 
+const emailQueue = new Queue({
+  concurrency: 2,
+  maxRetries: 3,
+  timeout: '15s',
+  tracer,
+  redisOptions: { database: 1 },
+})
+
+emailQueue.process(async (payload) => {
+  await new Promise((r) => setTimeout(r, 500 + Math.random() * 1500))
+  if (Math.random() < 0.05) throw new Error('smtp transient')
+  return { sent: true, to: payload?.to }
+})
+
 const cron = new Cron({ tracer })
 
 cron.add('heartbeat', '5s', async () => {
@@ -522,7 +536,7 @@ setInterval(() => {
 app.use(
   '/devtools',
   prsmDevtools({
-    queue,
+    queue: { default: queue, emails: emailQueue },
     cron,
     limit: { api: apiLimiter, uploads: uploadLimiter },
     cells: { portfolio: g, health },
@@ -547,8 +561,15 @@ app.post('/test/enqueue', async (req, res) => {
 app.post('/test/enqueue-group', async (req, res) => {
   const groups = ['tenant-a', 'tenant-b', 'tenant-c']
   const group = groups[Math.floor(Math.random() * groups.length)]
-  const id = await queue.group(group).push({ name: 'grouped-job', group, ts: Date.now() })
+  const id = await queue.push({ name: 'grouped-job', group, ts: Date.now() }, { group })
   res.json({ id, group })
+})
+
+app.post('/test/enqueue-email', async (req, res) => {
+  const recipients = ['alice@example.com', 'bob@example.com', 'carol@example.com']
+  const to = recipients[Math.floor(Math.random() * recipients.length)]
+  const id = await emailQueue.push({ to, subject: 'Welcome', ts: Date.now() })
+  res.json({ id, to })
 })
 
 app.post('/test/flood', async (_req, res) => {
@@ -556,10 +577,13 @@ app.post('/test/flood', async (_req, res) => {
   for (let i = 0; i < 10; i++) promises.push(queue.push({ name: `flood-${i}` }))
   for (let i = 0; i < 5; i++) {
     const group = ['tenant-a', 'tenant-b'][i % 2]
-    promises.push(queue.group(group).push({ name: `group-flood-${i}`, group }))
+    promises.push(queue.push({ name: `group-flood-${i}`, group }, { group }))
+  }
+  for (let i = 0; i < 6; i++) {
+    promises.push(emailQueue.push({ to: `user${i}@example.com`, subject: 'Burst' }))
   }
   await Promise.all(promises)
-  res.json({ queued: 15 })
+  res.json({ queued: 21 })
 })
 
 app.post('/test/hit-limit', async (_req, res) => {
@@ -595,6 +619,7 @@ setInterval(async () => {
 const port = 3000
 
 await queue.ready()
+await emailQueue.ready()
 await cron.start()
 await workflow.startWorker({ interval: '200ms' })
 
@@ -655,6 +680,7 @@ process.on('SIGINT', async () => {
   await realtime.close?.().catch(() => {})
   await cron.stop()
   await queue.close()
+  await emailQueue.close()
   await apiLimiter.close()
   await uploadLimiter.close()
   process.exit(0)

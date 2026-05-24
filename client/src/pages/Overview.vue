@@ -43,7 +43,7 @@ watch(
   (config) => {
     if (!config) return
     const keys = []
-    if (config.queue) keys.push('queue')
+    if (config.queue?.length) keys.push('queue')
     if (config.cron) keys.push('cron')
     if (config.limit?.length) keys.push('limit')
     if (config.workflow) keys.push('workflow')
@@ -55,7 +55,7 @@ watch(
 )
 
 const subsystemOptions = computed(() => [
-  { value: 'queue', label: 'Queue', disabled: !props.config?.queue },
+  { value: 'queue', label: 'Queue', disabled: !props.config?.queue?.length },
   { value: 'cron', label: 'Cron', disabled: !props.config?.cron },
   { value: 'limit', label: 'Limit', disabled: !props.config?.limit?.length },
   { value: 'workflow', label: 'Workflow', disabled: !props.config?.workflow },
