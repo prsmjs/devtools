@@ -65,7 +65,7 @@ function jumpToTrace() {
   selectTrace(id)
 }
 
-const sortMode = ref('depth')
+const sortMode = ref('recent')
 
 const sortedTraces = computed(() => {
   const list = traces.value.slice()
@@ -88,6 +88,21 @@ const allServices = computed(() => {
 const selectedSpan = computed(() => {
   if (!detail.value || !selectedSpanId.value) return null
   return detail.value.spans.find((s) => s.spanId === selectedSpanId.value) ?? null
+})
+
+const activeMs = computed(() => {
+  if (!detail.value) return 0
+  const spans = detail.value.spans.slice().sort((a, b) => a.startedAt - b.startedAt)
+  if (!spans.length) return 0
+  const merged = [[spans[0].startedAt, spans[0].endedAt]]
+  for (let i = 1; i < spans.length; i++) {
+    const s = spans[i].startedAt
+    const e = spans[i].endedAt
+    const last = merged[merged.length - 1]
+    if (s <= last[1]) last[1] = Math.max(last[1], e)
+    else merged.push([s, e])
+  }
+  return merged.reduce((acc, [s, e]) => acc + (e - s), 0)
 })
 
 const responseSentPct = computed(() => {
@@ -218,8 +233,8 @@ watch([filterStatus, filterService], () => { loadTraces() })
         <aside class="tr-list">
           <div class="tr-filters">
             <select v-model="sortMode">
-              <option value="depth">sort: most spans</option>
               <option value="recent">sort: most recent</option>
+              <option value="depth">sort: most spans</option>
               <option value="slow">sort: slowest</option>
             </select>
             <select v-model="filterStatus">
@@ -267,7 +282,8 @@ watch([filterStatus, filterService], () => { loadTraces() })
                 <code class="tr-header__id">{{ detail.traceId }}</code>
               </div>
               <dl class="tr-header__stats">
-                <div><dt>Total</dt><dd>{{ formatDur(detail.durationMs) }}</dd></div>
+                <div><dt>Wall</dt><dd>{{ formatDur(detail.durationMs) }}</dd></div>
+                <div><dt>Active</dt><dd>{{ formatDur(activeMs) }}</dd></div>
                 <div><dt>Spans</dt><dd>{{ detail.spanCount }}</dd></div>
                 <div><dt>Services</dt><dd>{{ detail.services.length }}</dd></div>
                 <div>

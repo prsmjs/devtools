@@ -43,44 +43,64 @@ export function prsmDevtools(options = {}) {
       traceRedis.connect().catch(() => {})
     }
   }
-  const TRACE_KEY = (id) => `devtools:trace:${id}`
+  const SPAN_KEY = (traceId, spanId) => `devtools:span:${traceId}:${spanId}`
+  const TRACE_SPANS_KEY = (traceId) => `devtools:trace-spans:${traceId}`
   const TRACE_INDEX = 'devtools:trace-index'
 
-  async function persistTrace(trace) {
+  function summarizeFromSpans(traceId, spans) {
+    if (!spans.length) return null
+    let firstStartedAt = Infinity
+    let lastEndedAt = -Infinity
+    const services = new Set()
+    let status = 'ok'
+    let root = null
+    for (const s of spans) {
+      if (s.startedAt < firstStartedAt) firstStartedAt = s.startedAt
+      if (s.endedAt > lastEndedAt) lastEndedAt = s.endedAt
+      services.add(s.service)
+      if (s.status === 'error') status = 'error'
+      if (!s.parentSpanId && !root) root = s
+    }
+    if (!root) root = spans.slice().sort((a, b) => a.startedAt - b.startedAt)[0]
+    return {
+      traceId,
+      spans,
+      firstStartedAt,
+      lastEndedAt,
+      services,
+      status,
+      rootName: root?.name ?? null,
+      rootService: root?.service ?? null,
+    }
+  }
+
+  async function persistSpan(span) {
     if (!traceRedis) return
     try {
       const ttlSec = Math.max(60, Math.floor(traceRetentionMs / 1000))
-      const payload = JSON.stringify({
-        traceId: trace.traceId,
-        spans: trace.spans,
-        firstStartedAt: trace.firstStartedAt,
-        lastEndedAt: trace.lastEndedAt,
-        services: [...trace.services],
-        status: trace.status,
-        rootName: trace.rootName,
-        rootService: trace.rootService,
-      })
-      await traceRedis.set(TRACE_KEY(trace.traceId), payload, { EX: ttlSec })
-      await traceRedis.zAdd(TRACE_INDEX, { score: trace.lastEndedAt, value: trace.traceId })
+      const tx = traceRedis.multi()
+      tx.set(SPAN_KEY(span.traceId, span.spanId), JSON.stringify(span), { EX: ttlSec })
+      tx.sAdd(TRACE_SPANS_KEY(span.traceId), span.spanId)
+      tx.expire(TRACE_SPANS_KEY(span.traceId), ttlSec)
+      tx.zAdd(TRACE_INDEX, { score: span.endedAt, value: span.traceId })
+      await tx.exec()
     } catch {}
   }
 
   async function loadTraceFromStore(id) {
     if (!traceRedis) return null
     try {
-      const raw = await traceRedis.get(TRACE_KEY(id))
-      if (!raw) return null
-      const data = JSON.parse(raw)
-      return {
-        traceId: data.traceId,
-        spans: data.spans,
-        firstStartedAt: data.firstStartedAt,
-        lastEndedAt: data.lastEndedAt,
-        services: new Set(data.services),
-        status: data.status,
-        rootName: data.rootName,
-        rootService: data.rootService,
+      const spanIds = await traceRedis.sMembers(TRACE_SPANS_KEY(id))
+      if (!spanIds.length) return null
+      const keys = spanIds.map((sid) => SPAN_KEY(id, sid))
+      const raws = await traceRedis.mGet(keys)
+      const spans = []
+      for (const raw of raws) {
+        if (!raw) continue
+        try { spans.push(JSON.parse(raw)) } catch {}
       }
+      if (!spans.length) return null
+      return summarizeFromSpans(id, spans)
     } catch {
       return null
     }
@@ -89,7 +109,8 @@ export function prsmDevtools(options = {}) {
   async function listTraceIdsFromStore(limit, sinceMs) {
     if (!traceRedis) return []
     try {
-      const ids = await traceRedis.zRange(TRACE_INDEX, sinceMs ?? 0, '+inf', { BY: 'SCORE', REV: true, LIMIT: { offset: 0, count: limit } })
+      // ZREVRANGEBYSCORE: high score first; range is +inf..since
+      const ids = await traceRedis.zRange(TRACE_INDEX, '+inf', sinceMs ?? 0, { BY: 'SCORE', REV: true, LIMIT: { offset: 0, count: limit } })
       return ids ?? []
     } catch {
       return []
@@ -168,7 +189,7 @@ export function prsmDevtools(options = {}) {
       trace.rootName = span.name
       trace.rootService = span.service
     }
-    if (traceRedis) persistTrace(trace).catch(() => {})
+    if (traceRedis) persistSpan(span).catch(() => {})
   }
 
   function displayFor(metadata) {
@@ -283,30 +304,27 @@ export function prsmDevtools(options = {}) {
       const since = Number(req.query.since) || 0
       const status = req.query.status
       const service = req.query.service
-      const seen = new Set()
       const list = []
 
-      for (let i = traceOrder.length - 1; i >= 0; i--) {
-        const trace = traceMap.get(traceOrder[i])
-        if (!trace) continue
-        if (trace.lastEndedAt < since) continue
-        if (status && trace.status !== status) continue
-        if (service && !trace.services.has(service)) continue
-        list.push(summarizeTrace(trace))
-        seen.add(trace.traceId)
-        if (list.length >= limit) break
-      }
-
-      if (traceRedis && list.length < limit) {
+      if (traceRedis) {
         const ids = await listTraceIdsFromStore(limit * 2, since)
         for (const id of ids) {
-          if (seen.has(id)) continue
           const trace = await loadTraceFromStore(id)
           if (!trace) continue
+          if (trace.lastEndedAt < since) continue
           if (status && trace.status !== status) continue
           if (service && !trace.services.has(service)) continue
           list.push(summarizeTrace(trace))
-          seen.add(id)
+          if (list.length >= limit) break
+        }
+      } else {
+        for (let i = traceOrder.length - 1; i >= 0; i--) {
+          const trace = traceMap.get(traceOrder[i])
+          if (!trace) continue
+          if (trace.lastEndedAt < since) continue
+          if (status && trace.status !== status) continue
+          if (service && !trace.services.has(service)) continue
+          list.push(summarizeTrace(trace))
           if (list.length >= limit) break
         }
       }
@@ -315,8 +333,9 @@ export function prsmDevtools(options = {}) {
     })
 
     router.get('/api/traces/:id', async (req, res) => {
-      let trace = traceMap.get(req.params.id)
-      if (!trace && traceRedis) trace = await loadTraceFromStore(req.params.id)
+      const trace = traceRedis
+        ? await loadTraceFromStore(req.params.id)
+        : traceMap.get(req.params.id)
       if (!trace) return res.status(404).json({ error: 'trace not found' })
       const spans = trace.spans.slice().sort((a, b) => a.startedAt - b.startedAt)
       res.json({
