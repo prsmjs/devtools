@@ -4,8 +4,6 @@ import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
-import Card from '../ui/components/Card.vue'
-import Stat from '../ui/components/Stat.vue'
 import Badge from '../ui/components/Badge.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import Tabs from '../ui/components/Tabs.vue'
@@ -214,31 +212,27 @@ const EVENT_VARIANT = {
 
     <div v-else class="page-body">
       <section v-if="queueTabs.length > 1" class="page-section">
-        <Tabs
-          :model-value="selected"
-          :tabs="queueTabs"
-          variant="pills"
-          @update:model-value="selected = $event"
-        />
+        <div class="picker-row">
+          <Tabs
+            :model-value="selected"
+            :tabs="queueTabs"
+            variant="pills"
+            @update:model-value="selected = $event"
+          />
+        </div>
       </section>
 
       <section class="page-section">
-        <div class="stats-grid">
-          <Card padded>
-            <Stat label="In-flight" :value="stats.inFlight" caption="running right now" size="lg" />
-          </Card>
-          <Card padded>
-            <Stat label="Queued" :value="stats.depth" :caption="`${stats.defaultDepth} default + ${stats.depth - stats.defaultDepth} grouped`" size="lg" />
-          </Card>
-          <Card padded>
-            <Stat label="Completed" :value="sessionCounts.complete" caption="recent window" size="lg" />
-          </Card>
-          <Card padded>
-            <Stat label="Failed" :value="sessionCounts.failed" caption="recent window" size="lg" />
-          </Card>
-          <Card padded>
-            <Stat label="Retried" :value="sessionCounts.retry" caption="recent window" size="lg" />
-          </Card>
+        <div class="q-counts">
+          <span class="q-counts__stat"><strong>{{ stats.inFlight }}</strong> in-flight</span>
+          <span class="q-counts__sep" />
+          <span class="q-counts__stat"><strong>{{ stats.depth }}</strong> queued</span>
+          <span class="q-counts__sep" />
+          <span class="q-counts__stat"><strong>{{ sessionCounts.complete }}</strong> completed</span>
+          <span class="q-counts__sep" />
+          <span class="q-counts__stat" :style="sessionCounts.failed ? 'color: var(--status-failed)' : ''"><strong>{{ sessionCounts.failed }}</strong> failed</span>
+          <span class="q-counts__sep" />
+          <span class="q-counts__stat" :style="sessionCounts.retry ? 'color: var(--status-paused)' : ''"><strong>{{ sessionCounts.retry }}</strong> retried</span>
         </div>
       </section>
 
@@ -371,17 +365,22 @@ const EVENT_VARIANT = {
 </template>
 
 <style scoped>
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+.picker-row {
+  display: flex;
+  align-items: center;
 }
-@media (max-width: 1100px) {
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+
+.q-counts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-60);
 }
-@media (max-width: 720px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
+.q-counts__stat { font-variant-numeric: tabular-nums; }
+.q-counts__stat strong { font-weight: 500; color: var(--ink); margin-right: 4px; }
+.q-counts__sep { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-20); }
 
 .config-grid {
   display: grid;

@@ -322,12 +322,14 @@ const historyItems = computed(() =>
 
     <div class="page-body">
       <section v-if="graphs.length > 1" class="page-section">
-        <Tabs
-          :model-value="currentGraph"
-          :tabs="graphs.map((g) => ({ value: g, label: g }))"
-          variant="pills"
-          @update:model-value="currentGraph = $event"
-        />
+        <div class="picker-row">
+          <Tabs
+            :model-value="currentGraph"
+            :tabs="graphs.map((g) => ({ value: g, label: g }))"
+            variant="pills"
+            @update:model-value="currentGraph = $event"
+          />
+        </div>
       </section>
 
       <section class="page-section">
@@ -488,6 +490,10 @@ const historyItems = computed(() =>
 </template>
 
 <style scoped>
+.picker-row {
+  display: flex;
+  align-items: center;
+}
 .cells-toolbar {
   display: flex;
   align-items: center;
