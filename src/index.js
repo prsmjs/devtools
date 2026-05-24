@@ -644,24 +644,46 @@ export function prsmDevtools(options = {}) {
         }
 
         const channels = {}
-        for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
-          if (channel.startsWith('rt:presence:updates:')) continue
-          channels[channel] = [...subscribers].map((c) => c.id)
+        try {
+          const channelNames = (await realtime.channelManager.listAllChannels()) ?? []
+          for (const channel of channelNames) {
+            if (channel.startsWith('rt:presence:updates:')) continue
+            channels[channel] = await realtime.channelManager.getAllSubscriberIds(channel)
+          }
+        } catch {
+          for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
+            if (channel.startsWith('rt:presence:updates:')) continue
+            channels[channel] = [...subscribers].map((c) => c.id)
+          }
         }
 
         const collections = {}
-        realtime.collectionManager.collectionSubscriptions.forEach((subs, collId) => {
-          const subscribers = {}
-          subs.forEach((info, connId) => { subscribers[connId] = info })
-          collections[collId] = { subscribers }
-        })
+        try {
+          const collIds = (await realtime.collectionManager.listAllCollectionIds()) ?? []
+          for (const collId of collIds) {
+            collections[collId] = { subscribers: await realtime.collectionManager.getAllSubscribers(collId) }
+          }
+        } catch {
+          realtime.collectionManager.collectionSubscriptions.forEach((subs, collId) => {
+            const subscribers = {}
+            subs.forEach((info, connId) => { subscribers[connId] = info })
+            collections[collId] = { subscribers }
+          })
+        }
 
         const records = {}
-        realtime.recordSubscriptionManager.recordSubscriptions.forEach((subs, recordId) => {
-          const subscribers = {}
-          subs.forEach((mode, connId) => { subscribers[connId] = mode })
-          records[recordId] = { subscribers }
-        })
+        try {
+          const recordIds = (await realtime.recordSubscriptionManager.listAllRecordIds()) ?? []
+          for (const recordId of recordIds) {
+            records[recordId] = { subscribers: await realtime.recordSubscriptionManager.getAllSubscribers(recordId) }
+          }
+        } catch {
+          realtime.recordSubscriptionManager.recordSubscriptions.forEach((subs, recordId) => {
+            const subscribers = {}
+            subs.forEach((mode, connId) => { subscribers[connId] = mode })
+            records[recordId] = { subscribers }
+          })
+        }
 
         const exposed = {
           channels: realtime.channelManager.exposedChannels.map(patternToString),
@@ -693,22 +715,43 @@ export function prsmDevtools(options = {}) {
         }
 
         const channels = []
-        for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
-          if (channel.startsWith('rt:presence:updates:')) continue
-          for (const conn of subscribers) {
-            if (conn.id === id) { channels.push(channel); break }
+        try {
+          const subscribed = (await realtime.channelManager.getSubscribedChannelsForConnection(id)) ?? []
+          for (const channel of subscribed) {
+            if (!channel.startsWith('rt:presence:updates:')) channels.push(channel)
+          }
+        } catch {
+          for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
+            if (channel.startsWith('rt:presence:updates:')) continue
+            for (const conn of subscribers) {
+              if (conn.id === id) { channels.push(channel); break }
+            }
           }
         }
 
         const collections = []
-        realtime.collectionManager.collectionSubscriptions.forEach((subs, collId) => {
-          if (subs.has(id)) collections.push({ id: collId, ...subs.get(id) })
-        })
+        try {
+          const subscribed = (await realtime.collectionManager.getSubscribedCollectionsForConnection(id)) ?? {}
+          for (const [collId, info] of Object.entries(subscribed)) {
+            collections.push({ id: collId, ...info })
+          }
+        } catch {
+          realtime.collectionManager.collectionSubscriptions.forEach((subs, collId) => {
+            if (subs.has(id)) collections.push({ id: collId, ...subs.get(id) })
+          })
+        }
 
         const records = []
-        realtime.recordSubscriptionManager.recordSubscriptions.forEach((subs, recordId) => {
-          if (subs.has(id)) records.push({ id: recordId, mode: subs.get(id) })
-        })
+        try {
+          const subscribed = (await realtime.recordSubscriptionManager.getSubscribedRecordsForConnection(id)) ?? {}
+          for (const [recordId, mode] of Object.entries(subscribed)) {
+            records.push({ id: recordId, mode })
+          }
+        } catch {
+          realtime.recordSubscriptionManager.recordSubscriptions.forEach((subs, recordId) => {
+            if (subs.has(id)) records.push({ id: recordId, mode: subs.get(id) })
+          })
+        }
 
         const local = realtime.connectionManager.getLocalConnection(id)
 
