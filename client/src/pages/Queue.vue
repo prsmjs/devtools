@@ -5,6 +5,7 @@ import { useSSE } from '../sse.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
 import KeyValue from '../ui/components/KeyValue.vue'
+import ScrollArea from '../ui/components/ScrollArea.vue'
 import Badge from '../ui/components/Badge.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
 import Tabs from '../ui/components/Tabs.vue'
@@ -18,6 +19,18 @@ const events = useSSE()
 const now = ref(Date.now())
 const eventFilter = ref({ complete: true, failed: true, retry: true, new: false, drain: false })
 const groupFocus = ref(null)
+const expanded = ref(new Set())
+
+function toggleExpand(key) {
+  if (expanded.value.has(key)) expanded.value.delete(key)
+  else expanded.value.add(key)
+  expanded.value = new Set(expanded.value)
+}
+
+function formatPayload(payload) {
+  if (payload === undefined) return '(no payload)'
+  try { return JSON.stringify(payload, null, 2) } catch { return String(payload) }
+}
 
 let pollTimer = null
 let historyTimer = null
@@ -36,7 +49,7 @@ async function fetchConfig() {
 async function pollSnapshot() {
   if (!selected.value) return
   try {
-    const res = await fetch(api(`/queue/${encodeURIComponent(selected.value)}`))
+    const res = await fetch(api(`/queue/${encodeURIComponent(selected.value)}?payload=1`))
     if (res.ok) snapshot.value = await res.json()
   } catch {}
 }
@@ -292,19 +305,23 @@ const EVENT_VARIANT = {
           :title="`Live tasks${groupFocus ? ` - ${groupFocus}` : ''}`"
           :description="liveTasks.length ? 'Tasks currently in-flight on this instance.' : 'No tasks running right now.'"
         >
-          <div class="stream stream--fixed">
+          <ScrollArea height="280px">
             <template v-if="liveTasks.length">
-              <div v-for="task in liveTasks" :key="task.uuid" class="task">
-                <span class="task__uuid">{{ task.uuid.slice(0, 8) }}</span>
-                <Badge v-if="task.group" variant="default" size="sm">{{ task.group }}</Badge>
-                <Badge v-else variant="default" size="sm">default</Badge>
-                <span class="task__worker">{{ task.workerId }}</span>
-                <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
-                <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
+              <div v-for="task in liveTasks" :key="task.uuid" class="row-wrap">
+                <button type="button" class="row row--task" @click="toggleExpand(`live:${task.uuid}`)">
+                  <span class="row__caret">{{ expanded.has(`live:${task.uuid}`) ? '▾' : '▸' }}</span>
+                  <span class="task__uuid">{{ task.uuid.slice(0, 8) }}</span>
+                  <Badge v-if="task.group" variant="default" size="sm">{{ task.group }}</Badge>
+                  <Badge v-else variant="default" size="sm">default</Badge>
+                  <span class="task__worker">{{ task.workerId }}</span>
+                  <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
+                  <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
+                </button>
+                <pre v-if="expanded.has(`live:${task.uuid}`)" class="payload">{{ formatPayload(task.payload) }}</pre>
               </div>
             </template>
             <EmptyState v-else title="No tasks running" />
-          </div>
+          </ScrollArea>
         </Panel>
       </section>
 
@@ -323,34 +340,42 @@ const EVENT_VARIANT = {
               >{{ kind }} {{ sessionCounts[kind] }}</FilterChip>
             </div>
           </template>
-          <div v-if="filteredHistory.length" class="stream">
-            <div v-for="(e, i) in filteredHistory" :key="i" class="event">
-              <Badge :variant="HISTORY_VARIANT[e.kind]" size="sm">{{ e.kind }}</Badge>
-              <span class="event__uuid">{{ e.task?.uuid?.slice(0, 8) ?? '-' }}</span>
-              <Badge v-if="e.task?.group" variant="default" size="sm">{{ e.task.group }}</Badge>
-              <span v-if="e.kind === 'complete'" class="event__duration">{{ fmtDuration(e.durationMs) }}</span>
-              <span v-else-if="e.error" class="event__error">{{ e.error }}</span>
-              <span v-else-if="e.kind === 'retry'" class="event__attempt">attempt {{ e.attempt }}</span>
-              <span class="event__time">{{ new Date(e.ts).toLocaleTimeString() }}</span>
-            </div>
-          </div>
-          <EmptyState v-else title="No matching tasks" />
+          <ScrollArea max-height="480px">
+            <template v-if="filteredHistory.length">
+              <div v-for="(e, i) in filteredHistory" :key="`${e.task?.uuid ?? i}:${e.ts}`" class="row-wrap">
+                <button type="button" class="row row--event" @click="toggleExpand(`hist:${e.task?.uuid ?? i}:${e.ts}`)">
+                  <span class="row__caret">{{ expanded.has(`hist:${e.task?.uuid ?? i}:${e.ts}`) ? '▾' : '▸' }}</span>
+                  <Badge :variant="HISTORY_VARIANT[e.kind]" size="sm">{{ e.kind }}</Badge>
+                  <span class="event__uuid">{{ e.task?.uuid?.slice(0, 8) ?? '-' }}</span>
+                  <Badge v-if="e.task?.group" variant="default" size="sm">{{ e.task.group }}</Badge>
+                  <span v-if="e.kind === 'complete'" class="event__duration">{{ fmtDuration(e.durationMs) }}</span>
+                  <span v-else-if="e.error" class="event__error">{{ e.error }}</span>
+                  <span v-else-if="e.kind === 'retry'" class="event__attempt">attempt {{ e.attempt }}</span>
+                  <span class="event__time">{{ new Date(e.ts).toLocaleTimeString() }}</span>
+                </button>
+                <pre v-if="expanded.has(`hist:${e.task?.uuid ?? i}:${e.ts}`)" class="payload">{{ formatPayload(e.task?.payload) }}</pre>
+              </div>
+            </template>
+            <EmptyState v-else title="No matching tasks" />
+          </ScrollArea>
         </Panel>
       </section>
 
       <section class="page-section">
         <Panel title="Live events" description="Raw event stream for this queue, newest first.">
-          <div v-if="queueEvents.length" class="stream stream--compact">
-            <div v-for="(evt, i) in queueEvents" :key="i" class="event">
-              <Badge :variant="EVENT_VARIANT[evt.type.split(':')[1]] || 'default'" size="sm">
-                {{ evt.type.split(':')[1] }}
-              </Badge>
-              <span class="event__uuid">{{ evt.data?.task?.uuid?.slice(0, 8) ?? '-' }}</span>
-              <Badge v-if="evt.data?.task?.group" variant="default" size="sm">{{ evt.data.task.group }}</Badge>
-              <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
-            </div>
-          </div>
-          <EmptyState v-else title="No events yet" />
+          <ScrollArea max-height="320px">
+            <template v-if="queueEvents.length">
+              <div v-for="(evt, i) in queueEvents" :key="i" class="event">
+                <Badge :variant="EVENT_VARIANT[evt.type.split(':')[1]] || 'default'" size="sm">
+                  {{ evt.type.split(':')[1] }}
+                </Badge>
+                <span class="event__uuid">{{ evt.data?.task?.uuid?.slice(0, 8) ?? '-' }}</span>
+                <Badge v-if="evt.data?.task?.group" variant="default" size="sm">{{ evt.data.task.group }}</Badge>
+                <span class="event__time">{{ new Date(evt.ts).toLocaleTimeString() }}</span>
+              </div>
+            </template>
+            <EmptyState v-else title="No events yet" />
+          </ScrollArea>
         </Panel>
       </section>
     </div>
@@ -433,19 +458,44 @@ const EVENT_VARIANT = {
   flex-wrap: wrap;
 }
 
-.stream { max-height: 480px; overflow-y: auto; }
-.stream--fixed { height: 280px; overflow-y: auto; }
-.stream--compact { max-height: 320px; }
+.row-wrap { border-top: 1px solid var(--ink-08); }
+.row-wrap:first-child { border-top: 0; }
 
-.task, .event {
+.row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 9px 24px;
-  border-top: 1px solid var(--ink-08);
   font-size: 13px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.1s;
 }
-.task:first-child, .event:first-child { border-top: 0; }
+.row:hover { background: var(--ink-04); }
+
+.row__caret {
+  font-size: 10px;
+  color: var(--ink-40);
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.payload {
+  margin: 0;
+  padding: 12px 24px 14px 50px;
+  background: var(--ink-04);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px dashed var(--ink-08);
+}
 
 .task__uuid, .event__uuid {
   font-family: var(--mono);

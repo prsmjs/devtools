@@ -246,7 +246,7 @@ export function prsmDevtools(options = {}) {
     }
     function taskSummary(task) {
       if (!task) return null
-      return { uuid: task.uuid, group: task.group ?? null, attempts: task.attempts, createdAt: task.createdAt }
+      return { uuid: task.uuid, group: task.group ?? null, attempts: task.attempts, createdAt: task.createdAt, payload: task.payload }
     }
     for (const [qName, q] of Object.entries(queues)) {
       q.on('new', (data) => {
