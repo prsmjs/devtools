@@ -172,6 +172,14 @@ const liveTasks = computed(() => {
   return tasks.filter((t) => t.group === groupFocus.value)
 })
 
+const instanceCount = computed(() => {
+  const ids = new Set()
+  for (const t of (snapshot.value.inFlightTasks ?? [])) {
+    if (t.instanceId) ids.add(t.instanceId)
+  }
+  return Math.max(1, ids.size)
+})
+
 const queueEvents = computed(() =>
   events.value
     .filter((e) => e.type.startsWith('queue:') && e.data?.queue === selected.value)
@@ -304,7 +312,7 @@ const EVENT_VARIANT = {
       <section class="page-section">
         <Panel
           :title="`Live tasks${groupFocus ? ` - ${groupFocus}` : ''}`"
-          :description="liveTasks.length ? 'Tasks currently in-flight on this instance.' : 'No tasks running right now.'"
+          :description="liveTasks.length ? `Tasks currently in-flight across ${instanceCount} instance${instanceCount === 1 ? '' : 's'}.` : 'No tasks running right now.'"
         >
           <ScrollArea height="280px">
             <template v-if="liveTasks.length">
@@ -315,6 +323,7 @@ const EVENT_VARIANT = {
                   <Badge v-if="task.group" variant="default" size="sm">{{ task.group }}</Badge>
                   <Badge v-else variant="default" size="sm">default</Badge>
                   <span class="task__worker">{{ task.workerId }}</span>
+                  <span class="task__instance" :title="task.instanceId">{{ task.local ? 'local' : `instance ${task.instanceId.slice(0, 6)}` }}</span>
                   <span v-if="task.attempts > 1" class="task__attempts">attempt {{ task.attempts }}</span>
                   <span class="task__elapsed">{{ elapsed(task.startedAt) }}</span>
                 </button>
@@ -512,6 +521,12 @@ const EVENT_VARIANT = {
   flex-shrink: 0;
 }
 .task__worker {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-40);
+  flex-shrink: 0;
+}
+.task__instance {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-40);
