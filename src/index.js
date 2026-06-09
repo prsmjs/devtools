@@ -645,6 +645,30 @@ export function prsmDevtools(options = {}) {
       broadcast('realtime:record:removed', { recordId })
     })
 
+    const channelBufferSize = options.realtimeChannelBufferSize ?? 100
+    const channelTraffic = new Map()
+
+    function parseMaybe(message) {
+      if (typeof message !== 'string') return message
+      try { return JSON.parse(message) } catch { return message }
+    }
+
+    function recordChannelMessage(entry) {
+      let buf = channelTraffic.get(entry.channel)
+      if (!buf) { buf = []; channelTraffic.set(entry.channel, buf) }
+      buf.push(entry)
+      if (buf.length > channelBufferSize) buf.splice(0, buf.length - channelBufferSize)
+    }
+
+    if (typeof realtime.messageStream?.subscribeToMessages === 'function') {
+      realtime.messageStream.subscribeToMessages(({ channel, message, instanceId, timestamp }) => {
+        if (channel.startsWith('rt:presence:updates:')) return
+        const entry = { channel, payload: parseMaybe(message), instanceId, timestamp }
+        recordChannelMessage(entry)
+        broadcast('realtime:channel:message', entry)
+      })
+    }
+
     router.get('/api/realtime/state', async (_req, res) => {
       try {
         const connIds = await realtime.connectionManager.getAllConnectionIds()
@@ -675,7 +699,9 @@ export function prsmDevtools(options = {}) {
           const statesMap = await realtime.presenceManager.getAllPresenceStates(name)
           const presence = {}
           statesMap.forEach((state, connId) => { presence[connId] = state })
-          rooms.push({ name, members, presence })
+          let metadata = null
+          try { metadata = await realtime.roomManager.getMetadata(name) } catch {}
+          rooms.push({ name, members, presence, metadata })
         }
 
         const channels = {}
@@ -683,13 +709,18 @@ export function prsmDevtools(options = {}) {
           const channelNames = (await realtime.channelManager.listAllChannels()) ?? []
           for (const channel of channelNames) {
             if (channel.startsWith('rt:presence:updates:')) continue
-            channels[channel] = await realtime.channelManager.getAllSubscriberIds(channel)
+            channels[channel] = { subscribers: await realtime.channelManager.getAllSubscriberIds(channel) }
           }
         } catch {
           for (const [channel, subscribers] of Object.entries(realtime.channelManager.channelSubscriptions)) {
             if (channel.startsWith('rt:presence:updates:')) continue
-            channels[channel] = [...subscribers].map((c) => c.id)
+            channels[channel] = { subscribers: [...subscribers].map((c) => c.id) }
           }
+        }
+        for (const [channel, buf] of channelTraffic) {
+          if (!channels[channel]) channels[channel] = { subscribers: [] }
+          channels[channel].messageCount = buf.length
+          channels[channel].lastMessageAt = buf.length ? buf[buf.length - 1].timestamp : null
         }
 
         const collections = {}
@@ -843,6 +874,11 @@ export function prsmDevtools(options = {}) {
       } catch (err) {
         res.status(500).json({ error: err.message })
       }
+    })
+
+    router.get('/api/realtime/channel/:channel/messages', (req, res) => {
+      const buf = channelTraffic.get(req.params.channel) ?? []
+      res.json({ channel: req.params.channel, messages: buf })
     })
 
     router.get('/api/realtime/room/:name', async (req, res) => {

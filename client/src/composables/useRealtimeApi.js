@@ -7,8 +7,30 @@ export function useRealtimeApi(pollInterval = 1000) {
   const selectedConnectionId = ref(null)
   const error = ref(null)
   const watchedRecords = reactive({})
+  const channelMessages = reactive({})
+  const primedChannels = new Set()
+  const channelBufferSize = 100
+  let messageSeq = 0
   let timer = null
   let sseSource = null
+
+  function appendChannelMessage(channel, entry) {
+    let buf = channelMessages[channel]
+    if (!buf) { buf = []; channelMessages[channel] = buf }
+    buf.push({ ...entry, seq: ++messageSeq })
+    if (buf.length > channelBufferSize) buf.splice(0, buf.length - channelBufferSize)
+  }
+
+  async function loadChannelMessages(channel) {
+    try {
+      const res = await fetch(api(`/realtime/channel/${encodeURIComponent(channel)}/messages`))
+      if (!res.ok) throw new Error(`${res.status}`)
+      const result = await res.json()
+      channelMessages[channel] = (result.messages ?? []).map((m) => ({ ...m, seq: ++messageSeq }))
+    } catch {
+      if (!channelMessages[channel]) channelMessages[channel] = []
+    }
+  }
 
   async function fetchState() {
     try {
@@ -62,6 +84,14 @@ export function useRealtimeApi(pollInterval = 1000) {
 
   async function poll() {
     await fetchState()
+    if (state.value?.channels) {
+      for (const channel of Object.keys(state.value.channels)) {
+        if (!primedChannels.has(channel)) {
+          primedChannels.add(channel)
+          loadChannelMessages(channel)
+        }
+      }
+    }
     if (selectedConnectionId.value) {
       await fetchConnectionDetail(selectedConnectionId.value)
     }
@@ -86,6 +116,11 @@ export function useRealtimeApi(pollInterval = 1000) {
         watchedRecords[recordId] = null
       }
     })
+
+    sseSource.addEventListener('realtime:channel:message', (e) => {
+      const { channel, payload, instanceId, timestamp } = JSON.parse(e.data)
+      appendChannelMessage(channel, { channel, payload, instanceId, timestamp })
+    })
   })
 
   onUnmounted(() => {
@@ -103,5 +138,6 @@ export function useRealtimeApi(pollInterval = 1000) {
     watchRecord,
     unwatchRecord,
     fetchCollectionRecords,
+    channelMessages,
   }
 }

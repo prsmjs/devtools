@@ -107,6 +107,7 @@ app.use('/devtools', prsmDevtools(options))
 | `limit` | `Object<string, Limiter>` | Named limiters from `@prsm/limit` |
 | `workflow` | `WorkflowEngine` | An `@prsm/workflow` engine instance |
 | `cells` | `Graph` or `Object<string, Graph>` | A `@prsm/cells` graph instance, or a named map of graphs |
+| `realtimeChannelBufferSize` | `number` | How many recent messages to retain per realtime channel (default `100`) |
 
 All options are optional. The dashboard adapts to what's provided.
 
@@ -117,7 +118,7 @@ The middleware exposes these under its mount path:
 | Endpoint | Description |
 | --- | --- |
 | `GET /api/config` | Which subsystems are connected |
-| `GET /api/events` | SSE stream (queue, cron, workflow, and realtime record updates) |
+| `GET /api/events` | SSE stream (queue, cron, workflow, realtime record and channel message updates) |
 | `GET /api/queue` | Current in-flight count |
 | `GET /api/cron` | Registered jobs with next fire times |
 | `GET /api/limits` | List of named limiters |
@@ -129,6 +130,7 @@ The middleware exposes these under its mount path:
 | `GET /api/realtime/state` | Full realtime state snapshot |
 | `GET /api/realtime/connection/:id` | Detailed connection info |
 | `GET /api/realtime/room/:name` | Room members with metadata and presence |
+| `GET /api/realtime/channel/:channel/messages` | Recent messages observed on a channel |
 | `GET /api/realtime/record/:id` | Fetch a record's current value |
 | `GET /api/realtime/collection/:id/records` | Resolved records for a collection + connection |
 | `GET /api/cells/:graph` | All cells in the named graph with values, deps, status, metadata |

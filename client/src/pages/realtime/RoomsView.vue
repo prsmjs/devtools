@@ -9,6 +9,9 @@
       <template #aside>
         <Badge variant="active">{{ room.members.length }} {{ room.members.length === 1 ? 'member' : 'members' }}</Badge>
       </template>
+      <PanelSection v-if="room.metadata" label="Room metadata">
+        <JsonView :data="room.metadata" />
+      </PanelSection>
       <PanelSection flush>
         <div v-for="memberId in room.members" :key="memberId" class="rt-row">
           <ConnectionChip
@@ -32,6 +35,7 @@ import PanelSection from '../../ui/components/PanelSection.vue'
 import Badge from '../../ui/components/Badge.vue'
 import EmptyState from '../../ui/components/EmptyState.vue'
 import ConnectionChip from '../../components/ConnectionChip.vue'
+import JsonView from '../../components/JsonView.vue'
 
 defineProps({
   rooms: { type: Array, default: () => [] },

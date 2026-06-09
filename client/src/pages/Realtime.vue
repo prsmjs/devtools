@@ -41,6 +41,9 @@
           <router-view
             :rooms="filteredRooms"
             :channels="filteredChannels"
+            :channel-messages="channelMessages"
+            :selected-connection-id="selectedConnectionId"
+            @select-connection="selectConnection"
             :collections="filteredCollections"
             :records="filteredRecords"
             :detail="connectionDetail"
@@ -90,6 +93,7 @@ const {
   watchRecord,
   unwatchRecord,
   fetchCollectionRecords,
+  channelMessages,
 } = useRealtimeApi()
 
 const filteredRooms = computed(() => {
@@ -102,8 +106,8 @@ const filteredChannels = computed(() => {
   if (!state.value?.channels) return {}
   if (!selectedConnectionId.value) return state.value.channels
   const out = {}
-  for (const [ch, subs] of Object.entries(state.value.channels)) {
-    if (subs.includes(selectedConnectionId.value)) out[ch] = subs
+  for (const [ch, info] of Object.entries(state.value.channels)) {
+    if (info.subscribers?.includes(selectedConnectionId.value)) out[ch] = info
   }
   return out
 })
