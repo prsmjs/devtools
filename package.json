@@ -40,7 +40,7 @@
     "@prsm/queue": "^3.4.0",
     "@prsm/realtime": "^1.6.1",
     "@prsm/trace": "^1.2.0",
-    "@prsm/workflow": "^3.7.0",
+    "@prsm/workflow": "^3.7.1",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "pg": "^8.13.1",
