@@ -19,6 +19,9 @@ let dragging = false
 let didDrag = false
 let lastX = 0
 let lastY = 0
+let startX = 0
+let startY = 0
+const DRAG_THRESHOLD = 4
 
 function onWheel(e) {
   e.preventDefault()
@@ -38,19 +41,23 @@ function onPointerDown(e) {
   if (e.button !== 0) return
   dragging = true
   didDrag = false
-  lastX = e.clientX
-  lastY = e.clientY
+  startX = lastX = e.clientX
+  startY = lastY = e.clientY
 }
 
 function onPointerMove(e) {
   if (!dragging) return
   const dx = e.clientX - lastX
   const dy = e.clientY - lastY
-  if (dx !== 0 || dy !== 0) didDrag = true
   panX.value += dx
   panY.value += dy
   lastX = e.clientX
   lastY = e.clientY
+  // only count it as a drag once the pointer has moved past a small threshold, so
+  // a click with a few pixels of jitter still selects the node instead of being eaten
+  if (Math.abs(e.clientX - startX) > DRAG_THRESHOLD || Math.abs(e.clientY - startY) > DRAG_THRESHOLD) {
+    didDrag = true
+  }
 }
 
 function onPointerUp() {
@@ -86,28 +93,32 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 function buildLayout(graph) {
   const nodes = graph?.nodes ?? []
   const edges = graph?.edges ?? []
-  const incoming = new Map(nodes.map((node) => [node.name, 0]))
   const nextMap = new Map(nodes.map((node) => [node.name, []]))
 
   for (const edge of edges) {
-    if (incoming.has(edge.to)) incoming.set(edge.to, incoming.get(edge.to) + 1)
     if (nextMap.has(edge.from)) nextMap.get(edge.from).push(edge)
   }
 
-  const queue = [graph.start]
-  const levels = new Map([[graph.start, 0]])
+  // longest-path leveling via DFS. back-edges (cycles, e.g. a loop that routes to
+  // an earlier step) are skipped via the recursion stack so cyclic graphs don't
+  // spin forever, and a level is only revisited when a strictly longer path
+  // reaches it, which bounds the walk
+  const levels = new Map()
+  const onPath = new Set()
 
-  while (queue.length) {
-    const name = queue.shift()
+  function assignLevels(name, level) {
+    const seen = levels.get(name)
+    if (seen != null && seen >= level) return
+    levels.set(name, level)
+    onPath.add(name)
     for (const edge of nextMap.get(name) ?? []) {
-      const nextLevel = (levels.get(name) ?? 0) + 1
-      if (!levels.has(edge.to) || nextLevel > levels.get(edge.to)) {
-        levels.set(edge.to, nextLevel)
-      }
-      incoming.set(edge.to, Math.max(0, (incoming.get(edge.to) ?? 0) - 1))
-      if (incoming.get(edge.to) === 0) queue.push(edge.to)
+      if (onPath.has(edge.to)) continue
+      assignLevels(edge.to, level + 1)
     }
+    onPath.delete(name)
   }
+
+  if (graph.start) assignLevels(graph.start, 0)
 
   const columns = []
   for (const node of nodes) {
@@ -151,19 +162,61 @@ function buildLayout(graph) {
     groups.get(k).push(edge)
   }
 
+  const levelOf = (name) => levels.get(name) ?? 0
   const SPREAD = 26
   const lines = []
+  let maxEdgeY = 0
+
   for (const group of groups.values()) {
     group.forEach((edge, i) => {
       const from = positions.get(edge.from)
       const to = positions.get(edge.to)
       if (!from || !to) return
 
+      const offset = (i - (group.length - 1) / 2) * SPREAD
+
+      // a step looping back to itself: small arc out and back into the bottom edge
+      if (edge.from === edge.to) {
+        const x0 = from.x + from.width * 0.35
+        const x1 = from.x + from.width * 0.65
+        const y0 = from.y + from.height
+        const laneY = y0 + 44
+        maxEdgeY = Math.max(maxEdgeY, laneY)
+        lines.push({
+          ...edge,
+          back: true,
+          d: `M ${x0} ${y0} C ${x0} ${laneY}, ${x1} ${laneY}, ${x1} ${y0}`,
+          labelX: (x0 + x1) / 2,
+          labelY: laneY + 12,
+        })
+        return
+      }
+
+      // back-edge (a cycle routing to an earlier or same column): route it under
+      // the node band as a clear loop arc so it isn't hidden behind the nodes
+      if (levelOf(edge.to) <= levelOf(edge.from)) {
+        const startX = from.x + from.width * 0.4
+        const startY = from.y + from.height
+        const endX = to.x + to.width * 0.6
+        const endY = to.y + to.height
+        const span = Math.abs(levelOf(edge.from) - levelOf(edge.to)) || 1
+        const laneY = Math.max(startY, endY) + 46 + span * 10 + Math.abs(offset)
+        maxEdgeY = Math.max(maxEdgeY, laneY)
+        lines.push({
+          ...edge,
+          back: true,
+          d: `M ${startX} ${startY} C ${startX} ${laneY}, ${endX} ${laneY}, ${endX} ${endY}`,
+          labelX: (startX + endX) / 2,
+          labelY: laneY + 12,
+        })
+        return
+      }
+
+      // forward edge: left-to-right curve between node sides
       const x1 = from.x + from.width
       const y1 = from.y + from.height / 2
       const x2 = to.x
       const y2 = to.y + to.height / 2
-      const offset = (i - (group.length - 1) / 2) * SPREAD
       const cx = (x1 + x2) / 2
       // bow the curve by ~1.6x the offset so each parallel edge separates clearly
       const cpy1 = y1 + offset * 1.6
@@ -182,7 +235,7 @@ function buildLayout(graph) {
     nodes: positioned,
     edges: lines,
     width: Math.max(760, ...positioned.map((node) => node.x + node.width + padding)),
-    height: Math.max(420, ...positioned.map((node) => node.y + node.height + padding)),
+    height: Math.max(420, maxEdgeY + padding, ...positioned.map((node) => node.y + node.height + padding)),
   }
 }
 
@@ -202,11 +255,18 @@ function nodeClass(name, type) {
 }
 
 function edgeClass(edge) {
-  if (!props.execution) return 'edge'
-  const fromState = stepState(edge.from)
-  if (fromState?.route && fromState.route === edge.label) return 'edge edge-active'
-  if (stepState(edge.from)?.status === 'succeeded' && stepState(edge.to)) return 'edge edge-seen'
-  return 'edge'
+  const classes = ['edge']
+  const fromState = props.execution ? stepState(edge.from) : null
+  if (fromState?.route && fromState.route === edge.label) classes.push('edge-active')
+  else if (fromState?.status === 'succeeded' && stepState(edge.to)) classes.push('edge-seen')
+  return classes.join(' ')
+}
+
+function edgeMarker(edge) {
+  const c = edgeClass(edge)
+  if (c.includes('edge-active')) return 'url(#arrow-active)'
+  if (c.includes('edge-seen')) return 'url(#arrow-seen)'
+  return 'url(#arrow)'
 }
 </script>
 
@@ -234,12 +294,24 @@ function edgeClass(edge) {
       class="graph"
       :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: '0 0' }"
     >
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+          <path d="M 0 0 L 8 4 L 0 8 z" class="arrow-head arrow-head--idle" />
+        </marker>
+        <marker id="arrow-seen" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+          <path d="M 0 0 L 8 4 L 0 8 z" class="arrow-head arrow-head--seen" />
+        </marker>
+        <marker id="arrow-active" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+          <path d="M 0 0 L 8 4 L 0 8 z" class="arrow-head arrow-head--active" />
+        </marker>
+      </defs>
       <g>
         <path
           v-for="edge in layout.edges"
           :key="`${edge.from}:${edge.to}:${edge.label}`"
           :d="edge.d"
           :class="edgeClass(edge)"
+          :marker-end="edgeMarker(edge)"
         />
         <text
           v-for="edge in layout.edges"
@@ -261,6 +333,7 @@ function edgeClass(edge) {
         @click.stop="onNodeClick(node.name)"
       >
         <rect :x="node.x" :y="node.y" :width="node.width" :height="node.height" rx="10" />
+        <text v-if="node.name === graph.start" :x="node.x + 2" :y="node.y - 7" class="node-start">▸ start</text>
         <text :x="node.x + 16" :y="node.y + 28" class="node-name">{{ node.label || node.name }}</text>
         <text :x="node.x + 16" :y="node.y + 50" class="node-type">{{ node.type }}</text>
         <text
@@ -289,6 +362,12 @@ function edgeClass(edge) {
         </text>
       </g>
     </svg>
+    <div v-if="execution" class="graph-legend" @pointerdown.stop @wheel.stop>
+      <span class="graph-legend__item"><i class="graph-legend__dot graph-legend__dot--active" />succeeded</span>
+      <span class="graph-legend__item"><i class="graph-legend__dot graph-legend__dot--current" />running / current</span>
+      <span class="graph-legend__item"><i class="graph-legend__dot graph-legend__dot--failed" />failed</span>
+      <span class="graph-legend__item"><i class="graph-legend__dot graph-legend__dot--idle" />pending</span>
+    </div>
   </div>
 </template>
 
@@ -364,6 +443,11 @@ function edgeClass(edge) {
   stroke: var(--status-paused);
 }
 
+.arrow-head { stroke: none; }
+.arrow-head--idle { fill: var(--ink-20); }
+.arrow-head--seen { fill: var(--status-active); }
+.arrow-head--active { fill: var(--status-paused); }
+
 .edge-label {
   fill: var(--ink-40);
   font-family: var(--mono);
@@ -430,4 +514,47 @@ function edgeClass(edge) {
   fill: var(--status-paused);
   font-weight: 500;
 }
+.node-start {
+  fill: var(--ink-40);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.graph-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 7px 11px;
+  background: var(--paper);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+  box-shadow: var(--shadow-soft);
+}
+.graph-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-60);
+}
+.graph-legend__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 2px solid var(--ink-20);
+  background: var(--paper);
+}
+.graph-legend__dot--active { border-color: var(--status-active); }
+.graph-legend__dot--current { border-color: var(--status-paused); }
+.graph-legend__dot--failed { border-color: var(--status-failed); }
+.graph-legend__dot--idle { border-color: var(--ink-20); }
 </style>

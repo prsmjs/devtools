@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.js'
 import WorkflowGraph from '../components/WorkflowGraph.vue'
+import JsonView from '../components/JsonView.vue'
 import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
 import PanelSection from '../ui/components/PanelSection.vue'
@@ -11,8 +12,31 @@ import Badge from '../ui/components/Badge.vue'
 import Button from '../ui/components/Button.vue'
 import Modal from '../ui/components/Modal.vue'
 import Textarea from '../ui/components/Textarea.vue'
+import Callout from '../ui/components/Callout.vue'
 import Breadcrumbs from '../ui/components/Breadcrumbs.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
+
+// a workflow is cyclic if a DFS from start finds an edge back to a node already
+// on the current path (a back-edge)
+function isCyclic(graph) {
+  const next = new Map((graph?.nodes ?? []).map((n) => [n.name, []]))
+  for (const e of graph?.edges ?? []) if (next.has(e.from)) next.get(e.from).push(e.to)
+  const onPath = new Set()
+  const seen = new Set()
+  let cyclic = false
+  function dfs(name) {
+    if (cyclic) return
+    onPath.add(name)
+    seen.add(name)
+    for (const to of next.get(name) ?? []) {
+      if (onPath.has(to)) { cyclic = true; return }
+      if (!seen.has(to)) dfs(to)
+    }
+    onPath.delete(name)
+  }
+  if (graph?.start) dfs(graph.start)
+  return cyclic
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +46,7 @@ const selectedKey = ref('')
 const selectedStep = ref('')
 const loadError = ref(null)
 const trail = ref([])
+const mismatches = ref([])
 
 const runOpen = ref(false)
 const runInput = ref('{}')
@@ -37,6 +62,7 @@ async function load() {
 
   const data = await res.json()
   workflows.value = data.workflows
+  mismatches.value = data.mismatches ?? []
 
   const requested = typeof route.query.workflow === 'string' ? route.query.workflow : ''
   const fallback = workflows.value[0] ? `${workflows.value[0].name}@${workflows.value[0].version}` : ''
@@ -72,12 +98,25 @@ const selectedNode = computed(() =>
 const nodeItems = computed(() => {
   const n = selectedNode.value
   if (!n) return []
-  return [
-    { label: 'Type', value: n.type },
-    { label: 'Timeout', value: n.timeout ?? '—' },
-    { label: 'Retries', value: n.retry?.maxAttempts ?? 1 },
-  ]
+  const items = [{ label: 'Type', value: n.type }]
+  if (n.handler) items.push({ label: 'Handler', value: n.handler })
+  items.push({ label: 'Timeout', value: n.timeout ?? '—' })
+  items.push({ label: 'Max attempts', value: n.retry?.maxAttempts ?? 1 })
+  if (n.retry?.backoff) items.push({ label: 'Backoff', value: String(n.retry.backoff) })
+  if (n.maxPasses) items.push({ label: 'Max passes', value: n.maxPasses })
+  return items
 })
+
+const nodeRoutes = computed(() => {
+  const n = selectedNode.value
+  const wf = selectedWorkflow.value
+  if (!n || !wf) return []
+  return wf.graph.edges
+    .filter((e) => e.from === n.name)
+    .map((e) => ({ label: e.label, to: e.to }))
+})
+
+const selectedCyclic = computed(() => isCyclic(selectedWorkflow.value?.graph))
 
 function workflowName(key) {
   return workflows.value.find((w) => `${w.name}@${w.version}` === key)?.name ?? key
@@ -170,6 +209,10 @@ async function submitRun() {
     </PageHeader>
 
     <div class="page-body">
+      <Callout v-if="mismatches.length" variant="warning" eyebrow="Instance mismatch" class="wf-mismatch">
+        {{ mismatches.length }} workflow(s) are not registered on every instance:
+        {{ mismatches.map((m) => `${m.name}@${m.version}`).join(', ') }}. This usually means an instance is running older code.
+      </Callout>
       <EmptyState
         v-if="loadError"
         title="Could not load workflows"
@@ -195,6 +238,10 @@ async function submitRun() {
               <span class="wf-card__name">{{ workflow.name }}</span>
               <Badge size="sm">v{{ workflow.version }}</Badge>
             </div>
+            <div class="wf-card__meta">
+              <span>{{ workflow.graph?.nodes?.length ?? 0 }} steps</span>
+              <span v-if="isCyclic(workflow.graph)">· cyclic</span>
+            </div>
           </button>
         </aside>
 
@@ -212,12 +259,20 @@ async function submitRun() {
             </div>
             <dl class="wf-id__stats">
               <div>
+                <dt>Start</dt>
+                <dd>{{ selectedWorkflow.graph.start }}</dd>
+              </div>
+              <div>
                 <dt>Steps</dt>
                 <dd>{{ selectedWorkflow.graph.nodes.length }}</dd>
               </div>
               <div>
                 <dt>Edges</dt>
                 <dd>{{ selectedWorkflow.graph.edges.length }}</dd>
+              </div>
+              <div v-if="selectedCyclic">
+                <dt>Flow</dt>
+                <dd>cyclic</dd>
               </div>
             </dl>
           </header>
@@ -231,6 +286,18 @@ async function submitRun() {
             <PanelSection label="Step definition">
               <KeyValue layout="divided" boxed :items="nodeItems" />
               <p v-if="selectedNode.description" class="wf-node-desc">{{ selectedNode.description }}</p>
+            </PanelSection>
+            <PanelSection v-if="nodeRoutes.length" label="Routes">
+              <div class="wf-routes">
+                <div v-for="route in nodeRoutes" :key="`${route.label}->${route.to}`" class="wf-route">
+                  <span class="wf-route__label">{{ route.label }}</span>
+                  <span class="wf-route__arrow">→</span>
+                  <span class="wf-route__to">{{ route.to }}</span>
+                </div>
+              </div>
+            </PanelSection>
+            <PanelSection v-if="selectedNode.params" label="Params">
+              <JsonView :data="selectedNode.params" />
             </PanelSection>
             <PanelSection v-if="selectedNode.type === 'subworkflow'" label="Subworkflow">
               <div class="wf-sub-row">
@@ -305,6 +372,15 @@ async function submitRun() {
 .wf-card:hover:not(.wf-card--active) { background: var(--ink-04); border-color: var(--ink-20); }
 .wf-card--active { background: var(--ink-08); border-color: var(--ink-20); }
 .wf-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wf-card__meta {
+  display: flex;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-40);
+}
 .wf-card__name {
   font-size: 13px;
   letter-spacing: -0.1px;
@@ -368,6 +444,28 @@ async function submitRun() {
   line-height: 1.5;
   color: var(--ink-60);
 }
+
+.wf-mismatch { margin-bottom: 16px; }
+
+.wf-routes { display: flex; flex-direction: column; gap: 6px; }
+.wf-route {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.wf-route__label {
+  color: var(--ink);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  background: var(--ink-04);
+  border-radius: var(--radius-sharp);
+  padding: 2px 7px;
+}
+.wf-route__arrow { color: var(--ink-40); }
+.wf-route__to { color: var(--ink-60); }
 .wf-sub-row {
   display: flex;
   align-items: center;

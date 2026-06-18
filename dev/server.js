@@ -284,6 +284,62 @@ const ticketWorkflow = defineWorkflow({
   },
 })
 
+const batchHandlers = {
+  fetchBatch: async ({ params, data }) => {
+    await delay(300 + Math.random() * 400)
+    const cursor = data.cursor ?? 0
+    const remaining = Math.max(0, params.total - cursor)
+    const lastFetched = Math.min(params.batchSize, remaining)
+    return { cursor: cursor + lastFetched, lastFetched }
+  },
+  processBatch: async ({ data }) => {
+    await delay(200 + Math.random() * 300)
+    if (Math.random() < 0.08) throw new Error('downstream write rejected')
+    return { processedThrough: data.cursor }
+  },
+}
+
+// cyclic workflow: loops fetch -> process until the source is drained. exercises
+// step re-entry (pass counters, step.reentered journal entries), handler-bound
+// steps, and per-step params
+const batchWorkflow = defineWorkflow({
+  name: 'batch-processor',
+  version: '1',
+  start: 'fetch',
+  cycles: true,
+  steps: {
+    fetch: {
+      type: 'activity',
+      label: 'Fetch batch',
+      description: 'Pull the next page of records from the upstream source.',
+      handler: 'fetchBatch',
+      params: { batchSize: 10, total: 40 },
+      maxPasses: 8,
+      next: 'process',
+    },
+    process: {
+      type: 'activity',
+      label: 'Process batch',
+      description: 'Transform and persist the fetched records.',
+      handler: 'processBatch',
+      params: { concurrency: 4 },
+      maxPasses: 8,
+      retry: { maxAttempts: 3, backoff: '2s' },
+      next: 'more',
+    },
+    more: {
+      type: 'decision',
+      label: 'More records?',
+      transitions: { yes: 'fetch', no: 'done' },
+      decide: ({ data }) => (data.lastFetched > 0 ? 'yes' : 'no'),
+    },
+    done: {
+      type: 'succeed',
+      result: ({ data }) => ({ totalProcessed: data.cursor }),
+    },
+  },
+}, { handlers: batchHandlers })
+
 const workflow = new WorkflowEngine({
   storage: postgresDriver({
     connectionString: 'postgres://devtools:devtools_password@localhost:5544/devtools',
@@ -295,11 +351,29 @@ const workflow = new WorkflowEngine({
 })
 workflow.register(enrichWorkflow)
 workflow.register(ticketWorkflow)
+workflow.register(batchWorkflow)
 
 setInterval(() => {
   const subject = TICKET_SUBJECTS[Math.floor(Math.random() * TICKET_SUBJECTS.length)]
   workflow.start('ticket-triage', { subject }).catch(() => {})
 }, 5000)
+
+setInterval(() => {
+  workflow.start('batch-processor', {}).catch(() => {})
+}, 11000)
+
+// occasionally pause then resume a live batch run so the paused state is dogfoodable
+setInterval(async () => {
+  try {
+    const running = await workflow.listExecutions({ workflow: 'batch-processor' })
+    const candidate = running.find((e) => ['queued', 'waiting', 'running'].includes(e.status))
+    if (!candidate) return
+    await workflow.pause(candidate.id, 'Paused by demo scheduler').catch(() => {})
+    setTimeout(() => { workflow.resume(candidate.id).catch(() => {}) }, 9000)
+  } catch {
+    // postgres not ready yet
+  }
+}, 17000)
 
 setInterval(async () => {
   try {

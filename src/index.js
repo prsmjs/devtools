@@ -293,12 +293,15 @@ export function prsmDevtools(options = {}) {
       'execution:succeeded',
       'execution:failed',
       'execution:canceled',
+      'execution:paused',
       'execution:lease-lost',
       'step:started',
       'step:succeeded',
       'step:routed',
       'step:retry',
       'step:failed',
+      'step:suspended',
+      'step:resumed',
     ]) {
       workflow.on(event, (data) => broadcast(`workflow:${event}`, data ?? {}))
     }
@@ -620,6 +623,18 @@ export function prsmDevtools(options = {}) {
     router.post('/api/workflow/executions/:id/cancel', jsonBody, async (req, res) => {
       try {
         const execution = await workflow.cancel(req.params.id, req.body?.reason)
+        res.json({ execution })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/workflow/executions/:id/pause', jsonBody, async (req, res) => {
+      if (typeof workflow.pause !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/workflow version does not support pause' })
+      }
+      try {
+        const execution = await workflow.pause(req.params.id, req.body?.reason)
         res.json({ execution })
       } catch (err) {
         res.status(400).json({ error: err.message })

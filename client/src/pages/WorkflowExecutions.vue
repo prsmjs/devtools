@@ -9,6 +9,7 @@ import PageHeader from '../ui/components/PageHeader.vue'
 import Panel from '../ui/components/Panel.vue'
 import PanelSection from '../ui/components/PanelSection.vue'
 import KeyValue from '../ui/components/KeyValue.vue'
+import Tooltip from '../ui/components/Tooltip.vue'
 import Select from '../ui/components/Select.vue'
 import Badge from '../ui/components/Badge.vue'
 import Button from '../ui/components/Button.vue'
@@ -87,7 +88,9 @@ async function loadExecution(id) {
   if (!res.ok) return
   const data = await res.json()
   selectedExecution.value = data.execution
-  if (!selectedStep.value || !data.execution.steps[selectedStep.value]) {
+  // only pick a default step when nothing is selected; validity against the
+  // workflow graph is enforced by the watcher, so a never-entered step stays put
+  if (!selectedStep.value) {
     selectedStep.value = data.execution.currentStep || Object.keys(data.execution.steps)[0] || ''
   }
 }
@@ -161,8 +164,10 @@ const selectedWorkflow = computed(() => {
 
 watch([selectedExecution, selectedWorkflow], ([execution, workflow]) => {
   if (!execution || !workflow) return
-  if (selectedStep.value && execution.steps[selectedStep.value]) return
-  selectedStep.value = execution.currentStep || Object.keys(execution.steps)[0] || workflow.graph.start
+  // keep the selection as long as it is a real step in this workflow, even if it
+  // was never entered in this run (so you can inspect steps the run skipped)
+  if (selectedStep.value && workflow.graph.nodes.some((node) => node.name === selectedStep.value)) return
+  selectedStep.value = execution.currentStep || workflow.graph.start || Object.keys(execution.steps)[0] || ''
 })
 
 const selectedStepState = computed(() =>
@@ -205,17 +210,51 @@ const currentStepNode = computed(() => {
   return wf.graph.nodes.find((n) => n.name === step) ?? null
 })
 
+const selectedStepNode = computed(() => {
+  const wf = selectedWorkflow.value
+  if (!wf || !selectedStep.value) return null
+  return wf.graph.nodes.find((n) => n.name === selectedStep.value) ?? null
+})
+
+function entryDetail(entry) {
+  if (entry.route) return entry.route
+  if (entry.type === 'step.reentered' && entry.pass) return `pass ${entry.pass}`
+  if ((entry.type === 'step.started' || entry.type === 'step.retry-scheduled') && entry.attempt) {
+    return `attempt ${entry.attempt}`
+  }
+  if (entry.type === 'execution.paused' && entry.from) return `from ${entry.from}`
+  if (entry.type === 'step.skipped' && entry.reason) return entry.reason
+  return null
+}
+
 const canSignal = computed(() =>
   selectedExecution.value?.status === 'suspended' && currentStepNode.value?.type === 'wait'
 )
 
 const canCancel = computed(() =>
+  ['queued', 'waiting', 'running', 'suspended', 'paused'].includes(selectedExecution.value?.status)
+)
+
+const canPause = computed(() =>
   ['queued', 'waiting', 'running', 'suspended'].includes(selectedExecution.value?.status)
 )
 
-const canResume = computed(() =>
-  selectedExecution.value?.status === 'failed' && selectedExecution.value?.currentStep != null
-)
+const canResume = computed(() => {
+  const e = selectedExecution.value
+  if (!e) return false
+  if (e.status === 'paused') return true
+  return e.status === 'failed' && e.currentStep != null
+})
+
+const isPausedResume = computed(() => selectedExecution.value?.status === 'paused')
+
+const pausedInfo = computed(() => {
+  const e = selectedExecution.value
+  if (!e || e.status !== 'paused') return null
+  const entries = (e.journal ?? []).filter((j) => j.type === 'execution.paused')
+  const last = entries[entries.length - 1]
+  return { reason: last?.reason ?? 'Paused', from: e.pausedFrom ?? last?.from ?? null }
+})
 
 const waitRoutes = computed(() => {
   const wf = selectedWorkflow.value
@@ -240,6 +279,38 @@ const waitCountdown = computed(() => {
   return `${Math.ceil(ms / 1000)}s`
 })
 
+const hasData = computed(() => {
+  const d = selectedExecution.value?.data
+  return d && typeof d === 'object' && Object.keys(d).length > 0
+})
+
+const hasMetadata = computed(() => {
+  const m = selectedExecution.value?.metadata
+  return m && typeof m === 'object' && Object.keys(m).length > 0
+})
+
+const executionTags = computed(() => selectedExecution.value?.tags ?? [])
+
+const stepRetries = computed(() => {
+  const e = selectedExecution.value
+  if (!e || !selectedStep.value) return []
+  return (e.journal ?? [])
+    .filter((j) => j.type === 'step.retry-scheduled' && j.step === selectedStep.value)
+    .map((j) => ({
+      attempt: j.attempt,
+      message: j.error?.message ?? 'error',
+      retryAt: j.availableAt,
+    }))
+})
+
+// only when we landed on a child directly (no breadcrumb trail); drilling in
+// already gives breadcrumbs back up
+const parentLink = computed(() => {
+  const e = selectedExecution.value
+  if (!e?.parent || trail.value.length) return null
+  return { id: e.parent.executionId, step: e.parent.step }
+})
+
 const workflowOptions = computed(() => [
   { value: '', label: 'All workflows' },
   ...workflows.value.map((w) => ({ value: w.name, label: w.name })),
@@ -250,6 +321,8 @@ const statusOptions = [
   { value: 'queued', label: 'Queued' },
   { value: 'waiting', label: 'Waiting' },
   { value: 'running', label: 'Running' },
+  { value: 'suspended', label: 'Suspended' },
+  { value: 'paused', label: 'Paused' },
   { value: 'succeeded', label: 'Succeeded' },
   { value: 'failed', label: 'Failed' },
   { value: 'canceled', label: 'Canceled' },
@@ -261,7 +334,9 @@ function statusVariant(status) {
     case 'succeeded': return 'active'
     case 'failed': return 'failed'
     case 'canceled': return 'draft'
+    case 'paused': return 'draft'
     case 'waiting': return 'warning'
+    case 'suspended': return 'warning'
     default: return 'default'
   }
 }
@@ -277,17 +352,55 @@ const executionItems = computed(() => {
   ]
 })
 
+const STEP_TYPE_HINT = {
+  activity: 'Activity step: runs your handler code, then advances to the next step.',
+  decision: 'Decision step: runs code that returns one of the named routes, branching the workflow.',
+  wait: 'Wait step: pauses the run until a signal arrives (or a timeout transition fires).',
+  subworkflow: 'Subworkflow step: starts another workflow and waits for it to finish.',
+  succeed: 'Terminal step: ends the run successfully with its result as the output.',
+  fail: 'Terminal step: ends the run as failed.',
+}
+
 const stepItems = computed(() => {
   const s = selectedStepState.value
   if (!s) return []
   const items = [
-    { label: 'Status', value: s.status },
-    { label: 'Attempts', value: s.attempts },
+    { label: 'Status', value: s.status, hint: 'This step’s state in this run: pending, running, succeeded, failed, or awaiting (parked waiting on a signal or child).' },
+    { label: 'Attempts', value: s.attempts, hint: 'Times this step has run in the current pass, including retries. 1 means it succeeded on the first try.' },
   ]
-  if (s.route) items.push({ label: 'Route', value: s.route })
-  if (s.startedAt) items.push({ label: 'Started', value: new Date(s.startedAt).toLocaleTimeString() })
-  if (s.endedAt) items.push({ label: 'Ended', value: new Date(s.endedAt).toLocaleTimeString() })
-  if (s.idempotencyKey) items.push({ label: 'Idempotency key', value: s.idempotencyKey })
+  const maxPasses = selectedStepNode.value?.maxPasses
+  if (s.pass > 1 || maxPasses) {
+    items.push({
+      label: 'Pass',
+      value: maxPasses ? `${s.pass ?? 1} / ${maxPasses}` : s.pass ?? 1,
+      hint: 'Loop iteration. A cyclic workflow can route back into this step; pass 5 means it has been entered 5 times. Shown as current / max passes when a cap is set.',
+    })
+  }
+  if (s.route) {
+    const edge = selectedWorkflow.value?.graph.edges.find((e) => e.from === selectedStep.value && e.label === s.route)
+    items.push({
+      label: 'Route',
+      value: edge?.to ? `${s.route} → ${edge.to}` : s.route,
+      hint: 'For decision and wait steps, the branch this step took and the step it routed to next.',
+    })
+  }
+  if (s.startedAt) items.push({ label: 'Started', value: new Date(s.startedAt).toLocaleTimeString(), hint: 'When this step last began running.' })
+  if (s.endedAt) items.push({ label: 'Ended', value: new Date(s.endedAt).toLocaleTimeString(), hint: 'When this step last finished.' })
+  return items
+})
+
+const definitionItems = computed(() => {
+  const n = selectedStepNode.value
+  if (!n) return []
+  const items = [{ label: 'Type', value: n.type, hint: STEP_TYPE_HINT[n.type] ?? 'The kind of step.' }]
+  if (n.handler) items.push({ label: 'Handler', value: n.handler, hint: 'Named function bound to this step from the engine’s handler registry.' })
+  if (n.type === 'subworkflow' && n.workflow) {
+    items.push({ label: 'Subworkflow', value: n.version ? `${n.workflow}@${n.version}` : n.workflow, hint: 'The child workflow this step runs.' })
+  }
+  if (n.timeout != null) items.push({ label: 'Timeout', value: String(n.timeout), hint: 'Maximum time this step may run before it is aborted.' })
+  if (n.retry?.maxAttempts > 1) items.push({ label: 'Max attempts', value: n.retry.maxAttempts, hint: 'How many times a single pass may retry before the step is marked failed.' })
+  if (n.retry?.backoff) items.push({ label: 'Backoff', value: String(n.retry.backoff), hint: 'Delay between retry attempts.' })
+  if (n.maxPasses) items.push({ label: 'Max passes', value: n.maxPasses, hint: 'How many times a cycle may re-enter this step before the run errors out.' })
   return items
 })
 
@@ -407,14 +520,27 @@ async function doAction(path, label, doneLabel) {
               <Button v-if="canSignal" size="sm" variant="primary" icon="lucide:bell" @click="openSignal">
                 Signal
               </Button>
-              <Button v-if="canResume" size="sm" variant="ghost" icon="lucide:rotate-ccw" :loading="busy" @click="doAction('resume', 'Resume', 'resumed')">
-                Resume
+              <Button v-if="canPause" size="sm" variant="ghost" icon="lucide:pause" :loading="busy" @click="doAction('pause', 'Pause', 'paused')">
+                Pause
+              </Button>
+              <Button
+                v-if="canResume"
+                size="sm"
+                variant="ghost"
+                :icon="isPausedResume ? 'lucide:play' : 'lucide:rotate-ccw'"
+                :loading="busy"
+                @click="doAction('resume', isPausedResume ? 'Resume' : 'Retry', 'resumed')"
+              >
+                {{ isPausedResume ? 'Resume' : 'Retry' }}
               </Button>
               <Button v-if="canCancel" size="sm" variant="danger" :loading="busy" @click="doAction('cancel', 'Cancel', 'canceled')">
                 Cancel
               </Button>
             </div>
           </header>
+          <Callout v-if="pausedInfo" variant="warning" eyebrow="Paused">
+            {{ pausedInfo.reason }}<template v-if="pausedInfo.from"> · was {{ pausedInfo.from }}</template>. Resume to continue from where it left off.
+          </Callout>
           <WorkflowGraph
             :graph="selectedWorkflow.graph"
             :execution="selectedExecution"
@@ -422,6 +548,12 @@ async function doAction(path, label, doneLabel) {
             @select-step="selectedStep = $event"
           />
 
+          <Panel v-if="hasData" title="Data">
+            <PanelSection>
+              <p class="exec-panel-hint">Accumulated workflow state. Activity outputs merge into this, and decision and wait steps branch on it.</p>
+              <JsonView :data="selectedExecution.data" />
+            </PanelSection>
+          </Panel>
           <Panel v-if="selectedExecution.input != null" title="Input">
             <PanelSection><JsonView :data="selectedExecution.input" /></PanelSection>
           </Panel>
@@ -431,6 +563,9 @@ async function doAction(path, label, doneLabel) {
           <Panel v-if="selectedExecution.error" accent="lavender" title="Error">
             <PanelSection><JsonView :data="selectedExecution.error" /></PanelSection>
           </Panel>
+          <Panel v-if="hasMetadata" title="Metadata">
+            <PanelSection><JsonView :data="selectedExecution.metadata" /></PanelSection>
+          </Panel>
         </section>
 
         <aside v-if="selectedExecution && selectedWorkflow" class="exec-inspector">
@@ -438,16 +573,52 @@ async function doAction(path, label, doneLabel) {
             <PanelSection>
               <KeyValue layout="divided" boxed compact :items="executionItems" />
             </PanelSection>
+            <PanelSection v-if="executionTags.length" label="Tags">
+              <div class="exec-tags">
+                <Badge v-for="tag in executionTags" :key="tag" size="sm">{{ tag }}</Badge>
+              </div>
+            </PanelSection>
+            <PanelSection v-if="parentLink" label="Parent execution">
+              <div class="exec-sub-row">
+                <span class="exec-sub-id">{{ parentLink.id.slice(0, 8) }} · {{ parentLink.step }}</span>
+                <Button size="sm" variant="ghost" icon="lucide:corner-left-up" @click="selectExecution(parentLink.id)">
+                  Open parent
+                </Button>
+              </div>
+            </PanelSection>
           </Panel>
 
-          <Panel v-if="selectedStepState" :title="`Step · ${selectedStep}`">
-            <PanelSection v-if="selectedStepState.status === 'awaiting' && waitCountdown" flush>
+          <Panel v-if="selectedStep && (selectedStepState || selectedStepNode)" :title="`Step · ${selectedStep}`">
+            <PanelSection v-if="selectedStepState?.status === 'awaiting' && waitCountdown" flush>
               <Callout variant="info" class="exec-wait" eyebrow="Waiting for signal">
                 Timeout route fires in {{ waitCountdown }}.
               </Callout>
             </PanelSection>
-            <PanelSection>
-              <KeyValue layout="divided" boxed compact :items="stepItems" />
+            <PanelSection v-if="selectedStepState">
+              <KeyValue layout="divided" boxed compact :items="stepItems">
+                <template #label="{ item }">
+                  <Tooltip v-if="item.hint" placement="left">
+                    <template #content><span class="kv-hint__text">{{ item.hint }}</span></template>
+                    <span class="kv-hint">{{ item.label }}</span>
+                  </Tooltip>
+                  <template v-else>{{ item.label }}</template>
+                </template>
+              </KeyValue>
+            </PanelSection>
+            <PanelSection v-if="definitionItems.length" label="Definition">
+              <KeyValue layout="divided" boxed compact :items="definitionItems">
+                <template #label="{ item }">
+                  <Tooltip v-if="item.hint" placement="left">
+                    <template #content><span class="kv-hint__text">{{ item.hint }}</span></template>
+                    <span class="kv-hint">{{ item.label }}</span>
+                  </Tooltip>
+                  <template v-else>{{ item.label }}</template>
+                </template>
+              </KeyValue>
+              <p v-if="selectedStepNode?.description" class="exec-step-desc">{{ selectedStepNode.description }}</p>
+            </PanelSection>
+            <PanelSection v-if="selectedStepNode?.params" label="Params">
+              <JsonView :data="selectedStepNode.params" />
             </PanelSection>
             <PanelSection v-if="childExecutionId" label="Subworkflow">
               <div class="exec-sub-row">
@@ -458,13 +629,22 @@ async function doAction(path, label, doneLabel) {
               </div>
             </PanelSection>
             <PanelSection
-              v-if="selectedStepState.output != null && selectedStepState.output !== selectedStepState.route"
+              v-if="selectedStepState?.output != null && selectedStepState.output !== selectedStepState.route"
               label="Output"
             >
               <JsonView :data="selectedStepState.output" />
             </PanelSection>
-            <PanelSection v-if="selectedStepState.error" label="Error">
+            <PanelSection v-if="selectedStepState?.error" label="Error">
               <JsonView :data="selectedStepState.error" />
+            </PanelSection>
+            <PanelSection v-if="stepRetries.length" label="Retry history">
+              <div class="exec-retries">
+                <div v-for="(retry, index) in stepRetries" :key="index" class="exec-retry">
+                  <span class="exec-retry__attempt">attempt {{ retry.attempt }}</span>
+                  <span class="exec-retry__msg">{{ retry.message }}</span>
+                  <span class="exec-retry__time">retry {{ new Date(retry.retryAt).toLocaleTimeString() }}</span>
+                </div>
+              </div>
             </PanelSection>
           </Panel>
 
@@ -474,6 +654,7 @@ async function doAction(path, label, doneLabel) {
                 <div v-for="(entry, index) in timeline" :key="index" class="timeline__row">
                   <span class="timeline__type">{{ entry.type }}</span>
                   <span class="timeline__step">{{ entry.step || entry.route || '—' }}</span>
+                  <span v-if="entryDetail(entry)" class="timeline__detail">{{ entryDetail(entry) }}</span>
                   <span class="timeline__time">{{ new Date(entry.at).toLocaleTimeString() }}</span>
                 </div>
                 <EmptyState v-if="!timeline.length" title="No journal entries" />
@@ -638,10 +819,77 @@ async function doAction(path, label, doneLabel) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.timeline__detail {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-60);
+  background: var(--ink-04);
+  border-radius: var(--radius-sharp);
+  padding: 1px 6px;
+}
 .timeline__time {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   color: var(--ink-40);
+}
+
+.exec-step-desc {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-60);
+}
+
+.exec-panel-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-60);
+}
+
+.exec-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.exec-retries { display: flex; flex-direction: column; gap: 8px; }
+.exec-retry {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+}
+.exec-retry__attempt {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-60);
+}
+.exec-retry__msg {
+  flex: 1;
+  min-width: 0;
+  color: var(--status-failed);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-retry__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-40);
+}
+
+.kv-hint {
+  border-bottom: 1px dotted var(--ink-30, var(--ink-20));
+  cursor: help;
+}
+.kv-hint__text {
+  display: block;
+  max-width: 260px;
+  white-space: normal;
+  line-height: 1.45;
 }
 
 .signal-modal { display: flex; flex-direction: column; gap: 14px; }
