@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { Icon } from '@iconify/vue'
 import { api } from '../api.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
@@ -27,7 +28,8 @@ const looked = ref(false)
 
 const checkPeriod = ref('')
 const checks = ref({})
-const checking = ref(null)
+const checksLoading = ref(false)
+const meterMissing = ref(false)
 
 onMounted(async () => {
   try {
@@ -86,11 +88,15 @@ async function lookup() {
   describeError.value = null
   effective.value = null
   checks.value = {}
+  meterMissing.value = false
   try {
     const res = await fetch(api(`/entitle/${encodeURIComponent(selected.value)}/describe?subject=${encodeURIComponent(subj)}`))
     const data = await res.json().catch(() => ({}))
     if (!res.ok) describeError.value = data.error || 'Lookup failed.'
-    else effective.value = data
+    else {
+      effective.value = data
+      runChecks()
+    }
   } catch (err) {
     describeError.value = err.message
   } finally {
@@ -104,21 +110,30 @@ function pick(subj) {
   lookup()
 }
 
-async function checkLimit(key) {
+// resolve live usage for every limit at once, so the page just shows it
+async function runChecks() {
+  if (!effective.value || !selected.value) return
   const subj = subject.value.trim()
-  if (!subj || !selected.value) return
-  checking.value = key
-  try {
-    const params = new URLSearchParams({ subject: subj, key })
-    if (checkPeriod.value.trim()) params.set('period', checkPeriod.value.trim())
-    const res = await fetch(api(`/entitle/${encodeURIComponent(selected.value)}/check?${params.toString()}`))
-    const data = await res.json().catch(() => ({}))
-    checks.value = { ...checks.value, [key]: res.ok ? data : { error: data.error || 'Check failed.' } }
-  } catch (err) {
-    checks.value = { ...checks.value, [key]: { error: err.message } }
-  } finally {
-    checking.value = null
-  }
+  if (!subj) return
+  const keys = Object.keys(effective.value.limits)
+  checksLoading.value = true
+  meterMissing.value = false
+  const next = {}
+  await Promise.all(keys.map(async (key) => {
+    try {
+      const params = new URLSearchParams({ subject: subj, key })
+      if (checkPeriod.value.trim()) params.set('period', checkPeriod.value.trim())
+      const res = await fetch(api(`/entitle/${encodeURIComponent(selected.value)}/check?${params.toString()}`))
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) next[key] = data
+      else if (/requires a .?meter/i.test(data.error || '')) meterMissing.value = true
+      else next[key] = { unmetered: true }
+    } catch {
+      next[key] = { unmetered: true }
+    }
+  }))
+  checks.value = next
+  checksLoading.value = false
 }
 
 function fmt(n) {
@@ -235,33 +250,38 @@ function fmt(n) {
               <p v-else class="muted">No features.</p>
             </PanelSection>
 
-            <PanelSection v-if="effective" label="Limits">
-              <div class="check-period">
-                <label>Usage period for checks</label>
-                <Input v-model="checkPeriod" placeholder="default · 30 days · month" size="sm" />
+            <PanelSection v-if="effective" label="Limits & usage">
+              <div class="lim-controls">
+                <div class="check-period">
+                  <label>Usage period</label>
+                  <Input v-model="checkPeriod" placeholder="default · 30 days · month" size="sm" @change="runChecks" />
+                </div>
+                <button type="button" class="refresh" title="Refresh usage" :disabled="checksLoading" @click="runChecks">
+                  <Icon icon="lucide:refresh-cw" :class="['refresh__icon', { 'refresh__icon--spin': checksLoading }]" />
+                </button>
               </div>
-              <div v-if="limitList.length" class="limits">
-                <div v-for="[k, v] in limitList" :key="k" class="lim">
-                  <div class="lim__main">
-                    <code class="lim__key">{{ k }}</code>
-                    <span class="lim__value">{{ fmtLimit(v) }}</span>
-                    <Button class="lim__btn" size="sm" variant="ghost" :loading="checking === k" @click="checkLimit(k)">Check usage</Button>
-                  </div>
-                  <div v-if="checks[k]" class="lim__result">
-                    <template v-if="checks[k].error">
-                      <span class="lim__err">{{ checks[k].error }}</span>
-                    </template>
-                    <template v-else>
+
+              <p v-if="meterMissing" class="hint">
+                Usage requires a @prsm/meter composed into this resolver. Showing limit ceilings only.
+              </p>
+
+              <div v-if="limitList.length" class="ltable">
+                <div v-for="[k, v] in limitList" :key="k" class="lrow">
+                  <code class="l-key">{{ k }}</code>
+                  <span class="l-ceiling">{{ fmtLimit(v) }}</span>
+                  <span class="l-usage">
+                    <template v-if="checks[k] && !checks[k].unmetered">
                       <Badge :variant="checks[k].allowed ? 'active' : 'failed'" size="sm">
                         {{ checks[k].allowed ? 'within' : 'over' }}
                       </Badge>
-                      <span class="lim__detail">
-                        used {{ fmt(checks[k].used) }}<template v-if="checks[k].limit !== null"> of {{ fmt(checks[k].limit) }}</template>
+                      <span class="l-used">
+                        {{ fmt(checks[k].used) }}<template v-if="checks[k].limit !== null"> / {{ fmt(checks[k].limit) }}</template>
                         {{ checks[k].unit }}
-                        <template v-if="checks[k].remaining !== null"> · {{ fmt(checks[k].remaining) }} left</template>
                       </span>
                     </template>
-                  </div>
+                    <span v-else-if="checks[k]?.unmetered" class="l-muted">not metered</span>
+                    <span v-else-if="checksLoading" class="l-muted">…</span>
+                  </span>
                 </div>
               </div>
               <p v-else class="muted">No limits.</p>
@@ -350,7 +370,8 @@ function fmt(n) {
   color: var(--ink-60);
 }
 
-.check-period { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; max-width: 260px; }
+.lim-controls { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.check-period { display: flex; flex-direction: column; gap: 5px; max-width: 220px; }
 .check-period label {
   font-family: var(--mono);
   text-transform: uppercase;
@@ -358,31 +379,41 @@ function fmt(n) {
   font-size: 9px;
   color: var(--ink-40);
 }
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-sharp);
+  color: var(--ink-60);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.refresh:hover:not(:disabled) { background: var(--ink-04); color: var(--ink); border-color: var(--ink-20); }
+.refresh:disabled { opacity: 0.5; }
+.refresh__icon { font-size: 15px; }
+.refresh__icon--spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* limit rows: button pinned right via fixed-width value, result on its own line so the
-   button never shifts when a check returns */
-.limits { display: flex; flex-direction: column; }
-.lim { border-top: 1px solid var(--ink-08); }
-.lim:first-child { border-top: 0; }
-.lim__main { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
-.lim__key { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
-.lim__value {
-  width: 96px;
+/* one grid so key / ceiling / usage line up across every row; usage fills in
+   automatically when a subject resolves, no per-row clicking */
+.ltable { display: grid; grid-template-columns: 1fr auto auto; column-gap: 16px; }
+.lrow { display: contents; }
+.lrow > * { padding: 9px 0; border-top: 1px solid var(--ink-08); align-self: center; min-width: 0; }
+.lrow:first-child > * { border-top: 0; }
+.l-key { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+.l-ceiling {
   text-align: right;
   font-family: var(--mono);
-  font-size: 13px;
-  color: var(--ink);
+  font-size: 12.5px;
+  color: var(--ink-60);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.lim__btn { flex-shrink: 0; }
-.lim__result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 0 10px;
-}
-.lim__detail { font-size: 12px; color: var(--ink-60); font-variant-numeric: tabular-nums; }
-.lim__err { font-family: var(--mono); font-size: 11px; color: var(--status-failed); }
+.l-usage { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.l-used { font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.l-muted { font-size: 12px; color: var(--ink-40); }
 
 .error { margin: 12px 0 0; font-family: var(--mono); font-size: 12px; color: var(--status-failed); }
 .muted { font-size: 13px; color: var(--ink-60); margin: 0; }
