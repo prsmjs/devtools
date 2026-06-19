@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
@@ -11,9 +11,9 @@ import Button from '../ui/components/Button.vue'
 import Select from '../ui/components/Select.vue'
 import ScrollArea from '../ui/components/ScrollArea.vue'
 
-const props = defineProps({ config: Object })
+defineProps({ config: Object })
 
-const meters = computed(() => props.config?.meter ?? [])
+const meters = ref([])
 const selected = ref(null)
 
 const catalog = ref(null)
@@ -44,11 +44,16 @@ const AGG = {
 }
 const agg = (a) => AGG[a] ?? { tone: 'default', help: '' }
 
-watch(
-  meters,
-  (list) => { if (list.length && (!selected.value || !list.includes(selected.value))) selected.value = list[0] },
-  { immediate: true },
-)
+onMounted(async () => {
+  try {
+    const res = await fetch(api('/config'))
+    if (res.ok) {
+      const cfg = await res.json()
+      meters.value = cfg.meter ?? []
+      if (meters.value.length) selected.value = meters.value[0]
+    }
+  } catch {}
+})
 
 watch(selected, async (name) => {
   catalog.value = null

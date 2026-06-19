@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api.js'
 import PageHeader from '../ui/components/PageHeader.vue'
 import EmptyState from '../ui/components/EmptyState.vue'
@@ -11,9 +11,9 @@ import Button from '../ui/components/Button.vue'
 import Select from '../ui/components/Select.vue'
 import ScrollArea from '../ui/components/ScrollArea.vue'
 
-const props = defineProps({ config: Object })
+defineProps({ config: Object })
 
-const resolvers = computed(() => props.config?.entitle ?? [])
+const resolvers = ref([])
 const selected = ref(null)
 
 const catalog = ref(null)
@@ -29,11 +29,16 @@ const checkPeriod = ref('')
 const checks = ref({})
 const checking = ref(null)
 
-watch(
-  resolvers,
-  (list) => { if (list.length && (!selected.value || !list.includes(selected.value))) selected.value = list[0] },
-  { immediate: true },
-)
+onMounted(async () => {
+  try {
+    const res = await fetch(api('/config'))
+    if (res.ok) {
+      const cfg = await res.json()
+      resolvers.value = cfg.entitle ?? []
+      if (resolvers.value.length) selected.value = resolvers.value[0]
+    }
+  } catch {}
+})
 
 watch(selected, async (name) => {
   catalog.value = null
