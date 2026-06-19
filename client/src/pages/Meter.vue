@@ -34,14 +34,15 @@ const queryResult = ref(null)
 const queryError = ref(null)
 const querying = ref(false)
 
-// how each metric's events roll up over the period, in plain language
+// color + plain-language tooltip for each aggregate keyword (the badge shows the
+// real keyword from the config, so the dashboard matches the API exactly)
 const AGG = {
-  sum: { label: 'total', tone: 'default', help: 'Total: every event summed over the period' },
-  max: { label: 'peak', tone: 'active', help: 'Peak: the high-water mark seen in the period' },
-  last: { label: 'latest', tone: 'draft', help: 'Latest: the most recently recorded value (a gauge)' },
-  unique: { label: 'distinct', tone: 'warning', help: 'Distinct: count of unique values seen in the period' },
+  sum: { tone: 'default', help: 'sum: every event added up over the period' },
+  max: { tone: 'active', help: 'max: the high-water mark (peak) seen in the period' },
+  last: { tone: 'draft', help: 'last: the most recently recorded value (a gauge)' },
+  unique: { tone: 'warning', help: 'unique: count of distinct values seen in the period' },
 }
-const agg = (a) => AGG[a] ?? { label: a, tone: 'default', help: '' }
+const agg = (a) => AGG[a] ?? { tone: 'default', help: '' }
 
 watch(
   meters,
@@ -199,14 +200,14 @@ function ago(ts) {
                   <div v-for="(def, name) in catalog.metrics" :key="name" class="trow">
                     <code class="c-metric">{{ name }}</code>
                     <span class="c-agg" :title="agg(def.aggregate).help">
-                      <Badge :variant="agg(def.aggregate).tone" size="sm">{{ agg(def.aggregate).label }}</Badge>
+                      <Badge :variant="agg(def.aggregate).tone" size="sm">{{ def.aggregate }}</Badge>
                     </span>
                     <span class="c-unit">{{ def.unit }}</span>
                   </div>
                 </div>
                 <p class="legend">
-                  How each metric rolls up over the period: <b>total</b> sums events, <b>peak</b> keeps the high-water mark,
-                  <b>latest</b> keeps the most recent value, <b>distinct</b> counts unique values.
+                  How each metric rolls up over the period: <b>sum</b> adds every event, <b>max</b> keeps the high-water mark,
+                  <b>last</b> keeps the most recent value, <b>unique</b> counts distinct values.
                 </p>
               </PanelSection>
             </Panel>
@@ -256,7 +257,7 @@ function ago(ts) {
                   <div v-for="m in summary.metrics" :key="m.metric" class="trow">
                     <code class="c-metric">{{ m.metric }}</code>
                     <span class="c-agg" :title="agg(m.aggregate).help">
-                      <Badge :variant="agg(m.aggregate).tone" size="sm">{{ agg(m.aggregate).label }}</Badge>
+                      <Badge :variant="agg(m.aggregate).tone" size="sm">{{ m.aggregate }}</Badge>
                     </span>
                     <span class="c-value">{{ fmt(m.quantity) }}</span>
                     <span class="c-unit">{{ m.unit }}</span>
