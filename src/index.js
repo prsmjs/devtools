@@ -21,6 +21,21 @@ function normalizeQueues(queue) {
   return queue
 }
 
+function normalizeInstances(value, probeMethod) {
+  if (!value) return null
+  if (typeof value[probeMethod] === 'function') return { default: value }
+  return value
+}
+
+function parseRange(query) {
+  const { rangeStart, rangeEnd } = query
+  if (!rangeStart || !rangeEnd) return null
+  const start = new Date(rangeStart)
+  const end = new Date(rangeEnd)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+  return { start, end }
+}
+
 function patternToString(p) {
   if (typeof p === 'string') return p
   if (p instanceof RegExp) return p.toString()
@@ -34,6 +49,8 @@ function patternToString(p) {
  * @param {Object<string, Object>} [options.limit] - named limiters
  * @param {import('@prsm/workflow').WorkflowEngine} [options.workflow]
  * @param {Object} [options.realtime] - RealtimeServer instance
+ * @param {Object} [options.meter] - a `@prsm/meter` instance, or a named map of meters
+ * @param {Object} [options.entitle] - a `@prsm/entitle` instance, or a named map of resolvers
  * @returns {import('express').Router}
  */
 export function prsmDevtools(options = {}) {
@@ -214,6 +231,8 @@ export function prsmDevtools(options = {}) {
     }
   }
   const cellGraphs = normalizeCellGraphs(options.cells)
+  const meters = normalizeInstances(options.meter, 'summary')
+  const entitlements = normalizeInstances(options.entitle, 'describe')
   const sseClients = new Set()
   const jsonBody = json()
 
@@ -326,6 +345,8 @@ export function prsmDevtools(options = {}) {
       cells: cellGraphs ? Object.keys(cellGraphs) : [],
       lock: lock ? Object.keys(lock) : [],
       cache: cache ? Object.keys(cache) : [],
+      meter: meters ? Object.keys(meters) : [],
+      entitle: entitlements ? Object.keys(entitlements) : [],
       trace: !!tracer,
     })
   })
@@ -1039,6 +1060,124 @@ export function prsmDevtools(options = {}) {
         res.json({ released })
       } catch (err) {
         res.status(500).json({ error: err.message })
+      }
+    })
+  }
+
+  if (meters) {
+    router.get('/api/meter/:name/catalog', (req, res) => {
+      const m = meters[req.params.name]
+      if (!m) return res.status(404).json({ error: 'meter not found' })
+      if (typeof m.catalog !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/meter version does not expose a catalog' })
+      }
+      try {
+        res.json(m.catalog())
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/meter/:name/summary', async (req, res) => {
+      const m = meters[req.params.name]
+      if (!m) return res.status(404).json({ error: 'meter not found' })
+      const subject = req.query.subject
+      if (!subject || typeof subject !== 'string') {
+        return res.status(400).json({ error: 'subject query param required' })
+      }
+      try {
+        const metrics = await m.summary({ subject })
+        res.json({ subject, metrics })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/meter/:name/usage', async (req, res) => {
+      const m = meters[req.params.name]
+      if (!m) return res.status(404).json({ error: 'meter not found' })
+      const { subject, metric } = req.query
+      if (!subject || !metric) {
+        return res.status(400).json({ error: 'subject and metric query params required' })
+      }
+      try {
+        const query = { subject, metric }
+        if (req.query.period) query.period = req.query.period
+        const range = parseRange(req.query)
+        if (range) query.range = range
+        res.json(await m.usage(query))
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/meter/:name/check', async (req, res) => {
+      const m = meters[req.params.name]
+      if (!m) return res.status(404).json({ error: 'meter not found' })
+      const { subject, metric } = req.query
+      if (!subject || !metric) {
+        return res.status(400).json({ error: 'subject and metric query params required' })
+      }
+      const limit = Number(req.query.limit)
+      if (!Number.isFinite(limit)) {
+        return res.status(400).json({ error: 'a numeric limit query param is required' })
+      }
+      try {
+        const query = { subject, metric, limit }
+        if (req.query.period) query.period = req.query.period
+        const range = parseRange(req.query)
+        if (range) query.range = range
+        res.json(await m.check(query))
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+  }
+
+  if (entitlements) {
+    router.get('/api/entitle/:name/catalog', (req, res) => {
+      const e = entitlements[req.params.name]
+      if (!e) return res.status(404).json({ error: 'entitlements not found' })
+      if (typeof e.catalog !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/entitle version does not expose a catalog' })
+      }
+      try {
+        res.json(e.catalog())
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/entitle/:name/describe', async (req, res) => {
+      const e = entitlements[req.params.name]
+      if (!e) return res.status(404).json({ error: 'entitlements not found' })
+      const subject = req.query.subject
+      if (!subject || typeof subject !== 'string') {
+        return res.status(400).json({ error: 'subject query param required' })
+      }
+      try {
+        const effective = await e.describe(subject)
+        res.json({ subject, ...effective })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/entitle/:name/check', async (req, res) => {
+      const e = entitlements[req.params.name]
+      if (!e) return res.status(404).json({ error: 'entitlements not found' })
+      const { subject, key } = req.query
+      if (!subject || !key) {
+        return res.status(400).json({ error: 'subject and key query params required' })
+      }
+      try {
+        const usageQuery = {}
+        if (req.query.period) usageQuery.period = req.query.period
+        const range = parseRange(req.query)
+        if (range) usageQuery.range = range
+        res.json(await e.check(subject, key, usageQuery))
+      } catch (err) {
+        res.status(400).json({ error: err.message })
       }
     })
   }

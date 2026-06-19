@@ -12,6 +12,11 @@ import { RealtimeServer } from '@prsm/realtime'
 import { RealtimeClient } from '@prsm/realtime/client'
 import { createCache } from '@prsm/cache'
 import { createTracer } from '@prsm/trace'
+import pg from 'pg'
+import { createMeter } from '@prsm/meter'
+import { postgresDriver as meterPostgres } from '@prsm/meter/postgres'
+import { createEntitlements } from '@prsm/entitle'
+import { postgresDriver as entitlePostgres } from '@prsm/entitle/postgres'
 import { prsmDevtools } from '../src/index.js'
 
 const tracer = createTracer({ service: 'devtools-dev' })
@@ -608,9 +613,78 @@ setInterval(() => {
   }).catch(() => {})
 }, 23000)
 
+const pgPool = new pg.Pool({
+  connectionString: 'postgres://devtools:devtools_password@localhost:5544/devtools',
+})
+
+const meter = createMeter({
+  driver: meterPostgres({ pool: pgPool, prefix: 'demo_meter' }),
+  metrics: {
+    api_calls: { unit: 'calls', aggregate: 'sum' },
+    tokens: { unit: 'tokens', aggregate: 'sum' },
+    seats: { unit: 'seats', aggregate: 'max' },
+    storage: { unit: 'GB', aggregate: 'last' },
+    active_users: { unit: 'users', aggregate: 'unique' },
+  },
+  period: 'month',
+  tracer,
+})
+await meter.setup()
+
+const entitle = createEntitlements({
+  driver: entitlePostgres({ pool: pgPool, prefix: 'demo_entitle' }),
+  plans: {
+    free: {
+      features: { api_access: true, sso: false, export_csv: false, priority_support: false },
+      limits: { tokens: 10_000, api_calls: 1_000, seats: 1 },
+    },
+    pro: {
+      features: { api_access: true, sso: true, export_csv: true, priority_support: false },
+      limits: { tokens: 500_000, api_calls: 100_000, seats: 10 },
+    },
+    enterprise: {
+      features: { api_access: true, sso: true, export_csv: true, priority_support: true },
+      limits: { tokens: null, api_calls: null, seats: null },
+    },
+  },
+  defaultPlan: 'free',
+  // projects is declared but no plan grants it, to surface the known-but-unset case
+  features: ['api_access', 'sso', 'export_csv', 'priority_support'],
+  limits: ['tokens', 'api_calls', 'seats', 'projects'],
+  meter,
+  tracer,
+})
+await entitle.setup()
+
+const METER_SUBJECTS = ['acct_amara', 'acct_devon', 'acct_noor']
+
+await entitle.assign('acct_amara', 'enterprise')
+await entitle.assign('acct_devon', 'pro')
+await entitle.override('acct_devon', { limits: { seats: 25 } })
+await entitle.override('acct_amara', { features: { priority_support: true } })
+
+// seed a baseline of recorded usage so the inspector has something to show
+for (const subject of METER_SUBJECTS) {
+  await meter.record({ subject, metric: 'tokens', quantity: Math.floor(2000 + Math.random() * 6000) })
+  await meter.record({ subject, metric: 'api_calls', quantity: Math.floor(50 + Math.random() * 400) })
+  await meter.record({ subject, metric: 'seats', quantity: Math.floor(1 + Math.random() * 8) })
+  await meter.record({ subject, metric: 'storage', quantity: +(Math.random() * 20).toFixed(1) })
+  for (const u of ['u1', 'u2', 'u3']) await meter.record({ subject, metric: 'active_users', value: `${subject}-${u}` })
+}
+
+// keep usage moving so the dashboard is live
+setInterval(() => {
+  const subject = METER_SUBJECTS[Math.floor(Math.random() * METER_SUBJECTS.length)]
+  meter.record({ subject, metric: 'tokens', quantity: Math.floor(Math.random() * 500) }).catch(() => {})
+  meter.record({ subject, metric: 'api_calls', quantity: Math.floor(1 + Math.random() * 20) }).catch(() => {})
+  if (Math.random() < 0.3) meter.record({ subject, metric: 'storage', quantity: +(Math.random() * 20).toFixed(1) }).catch(() => {})
+}, 3000)
+
 app.use(
   '/devtools',
   prsmDevtools({
+    meter,
+    entitle,
     queue: { default: queue, emails: emailQueue },
     cron,
     limit: { api: apiLimiter, uploads: uploadLimiter },
@@ -758,5 +832,6 @@ process.on('SIGINT', async () => {
   await emailQueue.close()
   await apiLimiter.close()
   await uploadLimiter.close()
+  await pgPool.end().catch(() => {})
   process.exit(0)
 })

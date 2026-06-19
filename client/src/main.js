@@ -13,6 +13,8 @@ import RealtimePage from './pages/Realtime.vue'
 import CellsPage from './pages/Cells.vue'
 import LocksPage from './pages/Locks.vue'
 import CachePage from './pages/Cache.vue'
+import MeterPage from './pages/Meter.vue'
+import EntitlePage from './pages/Entitle.vue'
 import TracesPage from './pages/Traces.vue'
 import RoomsView from './pages/realtime/RoomsView.vue'
 import ChannelsView from './pages/realtime/ChannelsView.vue'
@@ -41,6 +43,8 @@ const router = createRouter({
     { path: '/cells', component: CellsPage },
     { path: '/locks', component: LocksPage },
     { path: '/cache', component: CachePage },
+    { path: '/meter', component: MeterPage },
+    { path: '/entitle', component: EntitlePage },
     { path: '/traces', component: TracesPage },
     { path: '/queue', component: QueuePage },
     { path: '/cron', component: CronPage },

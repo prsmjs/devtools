@@ -80,6 +80,10 @@ Includes a connection picker sidebar for filtering all views by a specific clien
 
 **Executions** - workflow execution list with filters, live graph overlay showing execution progress, per-step state, output/error inspector, and journal timeline
 
+**Meter** - inspector for `@prsm/meter`. The catalog lists every metric with its unit and aggregate. Look up a subject to see its current-period usage across all metrics, then scope any metric to a window (a calendar period like `month`, a rolling duration like `30 days`, or an explicit date range) and check it against a quota.
+
+**Entitle** - inspector for `@prsm/entitle`. The plan catalog shows every plan's features and limits and the default plan. Resolve a subject to see its effective plan, feature flags, and limits after overrides, and check any limit against live usage when a meter is composed in.
+
 **Cells** - one or more `@prsm/cells` graphs with two views per graph:
 
 - **Table** - every cell in the graph with current value, dependencies, status, and last-updated time. Click a row to open a detail panel below
@@ -107,6 +111,8 @@ app.use('/devtools', prsmDevtools(options))
 | `limit` | `Object<string, Limiter>` | Named limiters from `@prsm/limit` |
 | `workflow` | `WorkflowEngine` | An `@prsm/workflow` engine instance |
 | `cells` | `Graph` or `Object<string, Graph>` | A `@prsm/cells` graph instance, or a named map of graphs |
+| `meter` | `Meter` or `Object<string, Meter>` | A `@prsm/meter` instance, or a named map of meters |
+| `entitle` | `Entitlements` or `Object<string, Entitlements>` | A `@prsm/entitle` instance, or a named map of resolvers |
 | `realtimeChannelBufferSize` | `number` | How many recent messages to retain per realtime channel (default `100`) |
 
 All options are optional. The dashboard adapts to what's provided.
@@ -135,6 +141,13 @@ The middleware exposes these under its mount path:
 | `GET /api/realtime/collection/:id/records` | Resolved records for a collection + connection |
 | `GET /api/cells/:graph` | All cells in the named graph with values, deps, status, metadata |
 | `GET /api/cells/:graph/:name/history` | Recent values for a cell (if history is enabled on it) |
+| `GET /api/meter/:name/catalog` | A meter's period and declared metric catalog |
+| `GET /api/meter/:name/summary?subject=` | A subject's current-period usage across every metric |
+| `GET /api/meter/:name/usage?subject=&metric=&period=` | Windowed usage for one metric (also accepts `rangeStart`/`rangeEnd`) |
+| `GET /api/meter/:name/check?subject=&metric=&limit=` | Usage for one metric checked against a quota |
+| `GET /api/entitle/:name/catalog` | The plan catalog, default plan, and feature/limit universes |
+| `GET /api/entitle/:name/describe?subject=` | A subject's effective plan, features, and limits |
+| `GET /api/entitle/:name/check?subject=&key=` | A subject's limit checked against live meter usage |
 
 ## How It Works
 

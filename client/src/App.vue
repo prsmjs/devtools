@@ -7,7 +7,7 @@ import AppLayout from './ui/components/AppLayout.vue'
 import SideNav from './ui/components/SideNav.vue'
 import Notifications from './ui/components/Notifications.vue'
 
-const config = ref({ queue: [], cron: false, limit: [], workflow: false, realtime: false, cells: [], lock: [], cache: [], trace: false })
+const config = ref({ queue: [], cron: false, limit: [], workflow: false, realtime: false, cells: [], lock: [], cache: [], meter: [], entitle: [], trace: false })
 const route = useRoute()
 const router = useRouter()
 
@@ -22,6 +22,8 @@ const navSections = computed(() => {
   if (config.value.cells?.length) items.push({ key: '/cells', label: 'Cells', icon: 'lucide:network' })
   if (config.value.lock?.length) items.push({ key: '/locks', label: 'Locks', icon: 'lucide:lock' })
   if (config.value.cache?.length) items.push({ key: '/cache', label: 'Cache', icon: 'lucide:database' })
+  if (config.value.meter?.length) items.push({ key: '/meter', label: 'Meter', icon: 'lucide:gauge-circle' })
+  if (config.value.entitle?.length) items.push({ key: '/entitle', label: 'Entitle', icon: 'lucide:badge-check' })
   if (config.value.trace) items.push({ key: '/traces', label: 'Traces', icon: 'lucide:waypoints' })
   if (config.value.queue?.length) items.push({ key: '/queue', label: 'Queue', icon: 'lucide:layers' })
   if (config.value.cron) items.push({ key: '/cron', label: 'Cron', icon: 'lucide:clock' })
