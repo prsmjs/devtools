@@ -266,19 +266,22 @@ function fmt(n) {
               </p>
 
               <div v-if="limitList.length" class="ltable">
+                <div class="lrow lrow--head">
+                  <span class="l-head">limit</span>
+                  <span class="l-head l-head--r">ceiling</span>
+                  <span class="l-head">status</span>
+                  <span class="l-head l-head--r">used</span>
+                </div>
                 <div v-for="[k, v] in limitList" :key="k" class="lrow">
                   <code class="l-key">{{ k }}</code>
                   <span class="l-ceiling">{{ fmtLimit(v) }}</span>
-                  <span class="l-usage">
-                    <template v-if="checks[k] && !checks[k].unmetered">
-                      <Badge :variant="checks[k].allowed ? 'active' : 'failed'" size="sm">
-                        {{ checks[k].allowed ? 'within' : 'over' }}
-                      </Badge>
-                      <span class="l-used">
-                        {{ fmt(checks[k].used) }}<template v-if="checks[k].limit !== null"> / {{ fmt(checks[k].limit) }}</template>
-                        {{ checks[k].unit }}
-                      </span>
-                    </template>
+                  <span class="l-status">
+                    <Badge v-if="checks[k] && !checks[k].unmetered" :variant="checks[k].allowed ? 'active' : 'failed'" size="sm">
+                      {{ checks[k].allowed ? 'within' : 'over' }}
+                    </Badge>
+                  </span>
+                  <span class="l-used">
+                    <template v-if="checks[k] && !checks[k].unmetered">{{ fmt(checks[k].used) }} {{ checks[k].unit }}</template>
                     <span v-else-if="checks[k]?.unmetered" class="l-muted">not metered</span>
                     <span v-else-if="checksLoading" class="l-muted">…</span>
                   </span>
@@ -396,14 +399,24 @@ function fmt(n) {
 .refresh__icon--spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* one grid so key / ceiling / usage line up across every row; usage fills in
-   automatically when a subject resolves, no per-row clicking */
-.ltable { display: grid; grid-template-columns: 1fr auto auto; column-gap: 16px; }
+/* one grid so every column (key / ceiling / status / used) lines up across all
+   rows; usage fills in automatically when a subject resolves, no per-row clicking */
+.ltable { display: grid; grid-template-columns: 1fr auto auto auto; column-gap: 16px; align-items: center; }
 .lrow { display: contents; }
 .lrow > * { padding: 9px 0; border-top: 1px solid var(--ink-08); align-self: center; min-width: 0; }
 .lrow:first-child > * { border-top: 0; }
+.lrow--head > * { padding-bottom: 7px; border-top: 0; }
+.l-head {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9px;
+  color: var(--ink-40);
+}
+.l-head--r { text-align: right; justify-self: end; }
 .l-key { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
 .l-ceiling {
+  justify-self: end;
   text-align: right;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -411,8 +424,15 @@ function fmt(n) {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.l-usage { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
-.l-used { font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.l-status { justify-self: start; }
+.l-used {
+  justify-self: end;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .l-muted { font-size: 12px; color: var(--ink-40); }
 
 .error { margin: 12px 0 0; font-family: var(--mono); font-size: 12px; color: var(--status-failed); }
