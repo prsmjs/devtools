@@ -400,12 +400,23 @@ function fmt(n) {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* one grid so every column (key / ceiling / status / used) lines up across all
-   rows; usage fills in automatically when a subject resolves, no per-row clicking */
-.ltable { display: grid; grid-template-columns: 1fr auto auto auto; column-gap: 16px; align-items: center; }
+   rows; cells stretch to a shared row height and center their content with flex,
+   so the row separators sit on one baseline regardless of the badge height */
+.ltable { display: grid; grid-template-columns: 1fr auto auto auto; column-gap: 16px; }
 .lrow { display: contents; }
-.lrow > * { padding: 9px 0; border-top: 1px solid var(--ink-08); align-self: center; min-width: 0; }
-.lrow:first-child > * { border-top: 0; }
-.lrow--head > * { padding-bottom: 7px; border-top: 0; }
+.lrow > * {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  border-top: 1px solid var(--ink-08);
+  min-width: 0;
+}
+.lrow--head > * {
+  min-height: 0;
+  align-items: flex-end;
+  padding-bottom: 7px;
+  border-top: 0;
+}
 .l-head {
   font-family: var(--mono);
   text-transform: uppercase;
@@ -413,21 +424,19 @@ function fmt(n) {
   font-size: 9px;
   color: var(--ink-40);
 }
-.l-head--r { text-align: right; justify-self: end; }
+.l-head--r { justify-content: flex-end; }
 .l-key { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
 .l-ceiling {
-  justify-self: end;
-  text-align: right;
+  justify-content: flex-end;
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--ink-60);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.l-status { justify-self: start; }
+.l-status { justify-content: flex-start; }
 .l-used {
-  justify-self: end;
-  text-align: right;
+  justify-content: flex-end;
   font-size: 12.5px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;

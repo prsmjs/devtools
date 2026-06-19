@@ -341,35 +341,38 @@ function ago(ts) {
   color: var(--ink);
 }
 
-/* aligned tables: one grid so columns line up across every row */
+/* aligned tables: one grid so columns line up across every row. cells stretch to
+   a shared row height and center content with flex, so row separators stay on one
+   baseline even though the aggregate badge is taller than plain text */
 .table { display: grid; column-gap: 14px; }
 .table--catalog { grid-template-columns: 1fr auto auto; }
 .table--usage { grid-template-columns: 1fr auto auto auto; }
 .trow { display: contents; }
 .trow > * {
-  padding: 9px 0;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
   border-top: 1px solid var(--ink-08);
-  align-self: center;
   min-width: 0;
 }
 .trow:first-child > * { border-top: 0; }
 .c-metric {
+  justify-content: flex-start;
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--ink);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.c-agg { justify-self: start; }
+.c-agg { justify-content: flex-start; }
 .c-value {
-  text-align: right;
+  justify-content: flex-end;
   font-family: var(--mono);
   font-size: 13px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.c-unit { font-size: 11px; color: var(--ink-40); white-space: nowrap; }
+.c-unit { justify-content: flex-start; font-size: 11px; color: var(--ink-40); white-space: nowrap; }
 
 .legend {
   margin: 14px 0 0;
