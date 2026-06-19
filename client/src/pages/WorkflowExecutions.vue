@@ -174,6 +174,44 @@ const selectedStepState = computed(() =>
   selectedExecution.value?.steps?.[selectedStep.value] ?? null
 )
 
+const stepRows = computed(() => {
+  const e = selectedExecution.value
+  if (!e?.steps) return []
+  const nodeByName = new Map((selectedWorkflow.value?.graph.nodes ?? []).map((n) => [n.name, n]))
+  return Object.entries(e.steps)
+    .map(([name, state]) => ({ name, state, node: nodeByName.get(name) ?? null }))
+    .sort((a, b) => (a.state.startedAt ?? 0) - (b.state.startedAt ?? 0))
+})
+
+function stepStatusVariant(status) {
+  switch (status) {
+    case 'running': return 'paused'
+    case 'succeeded': return 'active'
+    case 'failed': return 'failed'
+    case 'awaiting': return 'warning'
+    default: return 'default'
+  }
+}
+
+function stepDuration(state) {
+  if (!state.startedAt || !state.endedAt) return null
+  const ms = state.endedAt - state.startedAt
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)}s`
+}
+
+function rowRoute(row) {
+  const r = row.state.route
+  if (!r) return null
+  const edge = selectedWorkflow.value?.graph.edges.find((ed) => ed.from === row.name && ed.label === r)
+  return edge?.to ? `${r} → ${edge.to}` : r
+}
+
+function rowShowsOutput(row) {
+  const o = row.state.output
+  return o != null && o !== row.state.route
+}
+
 const childExecutionId = computed(() => selectedStepState.value?.childExecutionId ?? null)
 
 function selectExecution(id) {
@@ -548,6 +586,34 @@ async function doAction(path, label, doneLabel) {
             @select-step="selectedStep = $event"
           />
 
+          <Panel v-if="stepRows.length" title="Steps">
+            <PanelSection>
+              <p class="exec-panel-hint">Each step that has run in this execution, in order, with the output it produced. Click a step to highlight it in the graph and open it in the side panel.</p>
+              <div class="step-flow">
+                <button
+                  v-for="row in stepRows"
+                  :key="row.name"
+                  type="button"
+                  class="step-flow__item"
+                  :class="{ 'step-flow__item--active': row.name === selectedStep }"
+                  @click="selectedStep = row.name"
+                >
+                  <div class="step-flow__head">
+                    <span class="step-flow__name">{{ row.node?.label || row.name }}</span>
+                    <span v-if="row.node?.type" class="step-flow__type">{{ row.node.type }}</span>
+                    <Badge :variant="stepStatusVariant(row.state.status)" size="sm">{{ row.state.status }}</Badge>
+                    <span v-if="row.state.attempts > 1" class="step-flow__attempts">×{{ row.state.attempts }}</span>
+                    <span v-if="stepDuration(row.state)" class="step-flow__dur">{{ stepDuration(row.state) }}</span>
+                  </div>
+                  <div v-if="rowRoute(row)" class="step-flow__route">{{ rowRoute(row) }}</div>
+                  <JsonView v-if="rowShowsOutput(row)" :data="row.state.output" />
+                  <div v-else-if="row.state.error" class="step-flow__error">{{ row.state.error.message || 'failed' }}</div>
+                  <div v-else-if="row.state.status === 'succeeded'" class="step-flow__empty">no output</div>
+                </button>
+              </div>
+            </PanelSection>
+          </Panel>
+
           <Panel v-if="hasData" title="Data">
             <PanelSection>
               <p class="exec-panel-hint">Accumulated workflow state. Activity outputs merge into this, and decision and wait steps branch on it.</p>
@@ -851,6 +917,69 @@ async function doAction(path, label, doneLabel) {
 }
 
 .exec-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.step-flow { display: flex; flex-direction: column; gap: 8px; }
+.step-flow__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--ink-04);
+  border: 1px solid var(--ink-08);
+  border-left: 3px solid var(--ink-20);
+  border-radius: var(--radius-sharp);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.step-flow__item:hover { background: var(--ink-08); }
+.step-flow__item--active { border-left-color: var(--lavender); background: var(--ink-08); }
+.step-flow__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.step-flow__name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.16px;
+  color: var(--ink);
+}
+.step-flow__type {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-60);
+}
+.step-flow__attempts {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--status-failed);
+}
+.step-flow__dur {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-40);
+}
+.step-flow__route {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-60);
+}
+.step-flow__error {
+  font-size: 12px;
+  color: var(--status-failed);
+}
+.step-flow__empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-40);
+}
 
 .exec-retries { display: flex; flex-direction: column; gap: 8px; }
 .exec-retry {
