@@ -660,6 +660,7 @@ const METER_SUBJECTS = ['acct_amara', 'acct_devon', 'acct_noor']
 
 await entitle.assign('acct_amara', 'enterprise')
 await entitle.assign('acct_devon', 'pro')
+await entitle.assign('acct_noor', 'free')
 await entitle.override('acct_devon', { limits: { seats: 25 } })
 await entitle.override('acct_amara', { features: { priority_support: true } })
 

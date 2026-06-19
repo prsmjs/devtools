@@ -9,6 +9,7 @@ import Badge from '../ui/components/Badge.vue'
 import Input from '../ui/components/Input.vue'
 import Button from '../ui/components/Button.vue'
 import Select from '../ui/components/Select.vue'
+import ScrollArea from '../ui/components/ScrollArea.vue'
 
 const props = defineProps({ config: Object })
 
@@ -16,6 +17,8 @@ const meters = computed(() => props.config?.meter ?? [])
 const selected = ref(null)
 
 const catalog = ref(null)
+const subjectsList = ref([])
+const subjectsLoaded = ref(false)
 const subject = ref('')
 const summary = ref(null)
 const summaryError = ref(null)
@@ -31,7 +34,14 @@ const queryResult = ref(null)
 const queryError = ref(null)
 const querying = ref(false)
 
-const AGG_TONE = { sum: 'default', max: 'active', last: 'draft', unique: 'warning' }
+// how each metric's events roll up over the period, in plain language
+const AGG = {
+  sum: { label: 'total', tone: 'default', help: 'Total: every event summed over the period' },
+  max: { label: 'peak', tone: 'active', help: 'Peak: the high-water mark seen in the period' },
+  last: { label: 'latest', tone: 'draft', help: 'Latest: the most recently recorded value (a gauge)' },
+  unique: { label: 'distinct', tone: 'warning', help: 'Distinct: count of unique values seen in the period' },
+}
+const agg = (a) => AGG[a] ?? { label: a, tone: 'default', help: '' }
 
 watch(
   meters,
@@ -41,6 +51,8 @@ watch(
 
 watch(selected, async (name) => {
   catalog.value = null
+  subjectsList.value = []
+  subjectsLoaded.value = false
   summary.value = null
   summaryError.value = null
   looked.value = false
@@ -48,15 +60,30 @@ watch(selected, async (name) => {
   queryResult.value = null
   queryError.value = null
   if (!name) return
+  loadCatalog(name)
+  loadSubjects()
+})
+
+async function loadCatalog(name) {
   try {
     const res = await fetch(api(`/meter/${encodeURIComponent(name)}/catalog`))
     if (res.ok) {
       catalog.value = await res.json()
       const keys = Object.keys(catalog.value.metrics ?? {})
-      if (keys.length) metric.value = keys[0]
+      if (keys.length && !metric.value) metric.value = keys[0]
     }
   } catch {}
-})
+}
+
+async function loadSubjects() {
+  if (!selected.value) return
+  try {
+    const res = await fetch(api(`/meter/${encodeURIComponent(selected.value)}/subjects?limit=50`))
+    if (res.ok) subjectsList.value = (await res.json()).subjects ?? []
+  } catch {} finally {
+    subjectsLoaded.value = true
+  }
+}
 
 const metricOptions = computed(() => {
   if (catalog.value?.metrics) return Object.keys(catalog.value.metrics)
@@ -86,6 +113,11 @@ async function lookup() {
     looking.value = false
     looked.value = true
   }
+}
+
+function pick(subj) {
+  subject.value = subj
+  lookup()
 }
 
 async function runQuery() {
@@ -123,6 +155,14 @@ async function runQuery() {
 function fmt(n) {
   return typeof n === 'number' ? n.toLocaleString() : n
 }
+function ago(ts) {
+  if (!ts) return ''
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
 </script>
 
 <template>
@@ -141,32 +181,66 @@ function fmt(n) {
       />
 
       <template v-else>
-        <div v-if="meters.length > 1" class="meter-picker">
+        <div v-if="meters.length > 1" class="picker">
           <Select v-model="selected" :options="meters" size="sm" />
         </div>
 
-        <div class="meter-grid">
-          <Panel v-if="catalog">
-            <template #header>
-              <h3 class="meter-title">Catalog</h3>
-            </template>
-            <template #aside>
-              <Badge variant="dark">{{ catalog.period }}</Badge>
-            </template>
-            <PanelSection>
-              <ul class="rows">
-                <li v-for="(def, name) in catalog.metrics" :key="name" class="row">
-                  <code class="row__key">{{ name }}</code>
-                  <Badge :variant="AGG_TONE[def.aggregate] || 'default'" size="sm">{{ def.aggregate }}</Badge>
-                  <span class="row__unit">{{ def.unit }}</span>
-                </li>
-              </ul>
-            </PanelSection>
-          </Panel>
+        <div class="grid">
+          <div class="col">
+            <Panel v-if="catalog">
+              <template #header>
+                <h3 class="title">Catalog</h3>
+              </template>
+              <template #aside>
+                <Badge variant="dark" :title="`Usage is materialized per ${catalog.period}`">{{ catalog.period }}</Badge>
+              </template>
+              <PanelSection>
+                <div class="table table--catalog">
+                  <div v-for="(def, name) in catalog.metrics" :key="name" class="trow">
+                    <code class="c-metric">{{ name }}</code>
+                    <span class="c-agg" :title="agg(def.aggregate).help">
+                      <Badge :variant="agg(def.aggregate).tone" size="sm">{{ agg(def.aggregate).label }}</Badge>
+                    </span>
+                    <span class="c-unit">{{ def.unit }}</span>
+                  </div>
+                </div>
+                <p class="legend">
+                  How each metric rolls up over the period: <b>total</b> sums events, <b>peak</b> keeps the high-water mark,
+                  <b>latest</b> keeps the most recent value, <b>distinct</b> counts unique values.
+                </p>
+              </PanelSection>
+            </Panel>
+
+            <Panel>
+              <template #header>
+                <h3 class="title">Subjects</h3>
+              </template>
+              <template #aside>
+                <Button size="sm" variant="ghost" @click="loadSubjects">Refresh</Button>
+              </template>
+              <PanelSection>
+                <ScrollArea v-if="subjectsList.length" max-height="320px">
+                  <button
+                    v-for="s in subjectsList"
+                    :key="s.subject"
+                    type="button"
+                    :class="['srow', { 'srow--active': s.subject === subject }]"
+                    @click="pick(s.subject)"
+                  >
+                    <code class="srow__id">{{ s.subject }}</code>
+                    <span class="srow__meta">{{ ago(s.lastActivityAt) }}</span>
+                  </button>
+                </ScrollArea>
+                <p v-else class="muted">
+                  {{ subjectsLoaded ? 'No subjects have recorded usage yet.' : 'Loading…' }}
+                </p>
+              </PanelSection>
+            </Panel>
+          </div>
 
           <Panel>
             <template #header>
-              <h3 class="meter-title">Inspect a subject</h3>
+              <h3 class="title">Inspect a subject</h3>
             </template>
             <PanelSection>
               <form class="lookup" @submit.prevent="lookup">
@@ -177,35 +251,38 @@ function fmt(n) {
               <p v-if="summaryError" class="error">{{ summaryError }}</p>
 
               <div v-if="summary" class="summary">
-                <p class="summary__caption">Current period usage for <code>{{ summary.subject }}</code></p>
-                <ul class="rows">
-                  <li v-for="m in summary.metrics" :key="m.metric" class="row row--usage">
-                    <code class="row__key">{{ m.metric }}</code>
-                    <Badge :variant="AGG_TONE[m.aggregate] || 'default'" size="sm">{{ m.aggregate }}</Badge>
-                    <span class="row__value">{{ fmt(m.quantity) }} <span class="row__unit">{{ m.unit }}</span></span>
-                  </li>
-                </ul>
+                <p class="muted">Current period usage for <code>{{ summary.subject }}</code></p>
+                <div class="table table--usage">
+                  <div v-for="m in summary.metrics" :key="m.metric" class="trow">
+                    <code class="c-metric">{{ m.metric }}</code>
+                    <span class="c-agg" :title="agg(m.aggregate).help">
+                      <Badge :variant="agg(m.aggregate).tone" size="sm">{{ agg(m.aggregate).label }}</Badge>
+                    </span>
+                    <span class="c-value">{{ fmt(m.quantity) }}</span>
+                    <span class="c-unit">{{ m.unit }}</span>
+                  </div>
+                </div>
               </div>
-              <p v-else-if="looked && !summaryError" class="empty">No usage recorded for this subject.</p>
+              <p v-else-if="looked && !summaryError" class="muted">No usage recorded for this subject.</p>
             </PanelSection>
 
             <PanelSection label="Query a window">
               <form class="query" @submit.prevent="runQuery">
-                <div class="query__field">
+                <div class="field">
                   <label>Metric</label>
                   <Select v-model="metric" :options="metricOptions" size="sm" placeholder="Pick a metric" />
                 </div>
-                <div class="query__field">
+                <div class="field">
                   <label>Period</label>
                   <Input v-model="period" placeholder="month · 30 days · 15m" size="sm" />
                 </div>
-                <div class="query__field">
+                <div class="field">
                   <label>Limit (optional)</label>
                   <Input v-model="limit" type="number" placeholder="quota" size="sm" />
                 </div>
-                <div class="query__field query__field--wide">
+                <div class="field field--wide">
                   <label>Or explicit range (overrides period)</label>
-                  <div class="query__range">
+                  <div class="range">
                     <Input v-model="rangeStart" type="datetime-local" size="sm" />
                     <Input v-model="rangeEnd" type="datetime-local" size="sm" />
                   </div>
@@ -241,33 +318,36 @@ function fmt(n) {
 </template>
 
 <style scoped>
-.meter-picker { margin-bottom: 16px; }
-.meter-grid {
+.picker { margin-bottom: 16px; }
+.grid {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(420px, 2fr);
+  grid-template-columns: minmax(280px, 1fr) minmax(440px, 1.8fr);
   gap: 16px;
   align-items: start;
 }
-@media (max-width: 900px) { .meter-grid { grid-template-columns: 1fr; } }
-.meter-title {
+@media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+.col { display: flex; flex-direction: column; gap: 16px; }
+.title {
   margin: 0;
   font-family: var(--mono);
   font-size: 13px;
   letter-spacing: 0.02em;
   color: var(--ink);
 }
-.rows { list-style: none; margin: 0; padding: 0; }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+
+/* aligned tables: one grid so columns line up across every row */
+.table { display: grid; column-gap: 14px; }
+.table--catalog { grid-template-columns: 1fr auto auto; }
+.table--usage { grid-template-columns: 1fr auto auto auto; }
+.trow { display: contents; }
+.trow > * {
   padding: 9px 0;
   border-top: 1px solid var(--ink-08);
-}
-.row:first-child { border-top: 0; }
-.row__key {
-  flex: 1;
+  align-self: center;
   min-width: 0;
+}
+.trow:first-child > * { border-top: 0; }
+.c-metric {
   font-family: var(--mono);
   font-size: 12.5px;
   color: var(--ink);
@@ -275,41 +355,64 @@ function fmt(n) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.row__unit {
-  font-size: 11px;
-  color: var(--ink-40);
-}
-.row__value {
-  flex-shrink: 0;
+.c-agg { justify-self: start; }
+.c-value {
+  text-align: right;
   font-family: var(--mono);
   font-size: 13px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
-.lookup { display: flex; gap: 8px; }
-.lookup__input { flex: 1; min-width: 0; }
-.summary { margin-top: 16px; }
-.summary__caption {
-  margin: 0 0 6px;
-  font-size: 12px;
+.c-unit { font-size: 11px; color: var(--ink-40); white-space: nowrap; }
+
+.legend {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
   color: var(--ink-60);
 }
-.query {
+.legend b { color: var(--ink); font-weight: 600; }
+
+.srow {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-comfy);
+  text-align: left;
+  transition: background 120ms ease;
 }
-.query__field { display: flex; flex-direction: column; gap: 5px; }
-.query__field--wide { flex: 1 1 100%; }
-.query__field label {
+.srow:hover { background: var(--ink-04); }
+.srow--active { background: var(--ink-08); }
+.srow__id {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.srow__meta { flex-shrink: 0; font-size: 11px; color: var(--ink-40); }
+
+.lookup { display: flex; gap: 8px; }
+.lookup__input { flex: 1; min-width: 0; }
+.summary { margin-top: 12px; }
+.summary .muted { margin: 0 0 8px; }
+
+.query { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field--wide { flex: 1 1 100%; }
+.field label {
   font-family: var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 9px;
   color: var(--ink-40);
 }
-.query__range { display: flex; gap: 8px; }
+.range { display: flex; gap: 8px; }
+
 .result {
   display: flex;
   align-items: center;
@@ -319,25 +422,9 @@ function fmt(n) {
   background: var(--ink-04);
   border-radius: var(--radius-comfy);
 }
-.result__metric {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--ink);
-}
-.result__detail {
-  font-size: 13px;
-  color: var(--ink-60);
-  font-variant-numeric: tabular-nums;
-}
-.error {
-  margin: 12px 0 0;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--status-failed);
-}
-.empty {
-  margin: 14px 0 0;
-  font-size: 13px;
-  color: var(--ink-40);
-}
+.result__metric { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+.result__detail { font-size: 13px; color: var(--ink-60); font-variant-numeric: tabular-nums; }
+
+.error { margin: 12px 0 0; font-family: var(--mono); font-size: 12px; color: var(--status-failed); }
+.muted { font-size: 13px; color: var(--ink-60); }
 </style>

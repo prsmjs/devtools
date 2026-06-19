@@ -88,6 +88,12 @@ describe('devtools meter support', () => {
     expect(body).toMatchObject({ allowed: true, used: 600, remaining: 400, limit: 1000 })
   })
 
+  it('lists subjects with recorded usage for discovery', async () => {
+    const { body } = await get('/devtools/api/meter/default/subjects')
+    expect(body.subjects.map((s) => s.subject)).toContain('acct_1')
+    expect(body.subjects.every((s) => 'lastActivityAt' in s)).toBe(true)
+  })
+
   it('requires a subject for summary', async () => {
     const { status, body } = await get('/devtools/api/meter/default/summary')
     expect(status).toBe(400)
@@ -126,6 +132,12 @@ describe('devtools entitle support', () => {
     const { body } = await get('/devtools/api/entitle/default/describe?subject=ghost')
     expect(body.plan).toBe('free')
     expect(body.limits).toEqual({ tokens: 1000, seats: 1 })
+  })
+
+  it('lists configured subjects with flags for discovery', async () => {
+    const { body } = await get('/devtools/api/entitle/default/subjects')
+    const found = body.subjects.find((s) => s.subject === 'acct_1')
+    expect(found).toMatchObject({ assigned: true, overridden: true })
   })
 
   it('requires a subject for describe', async () => {

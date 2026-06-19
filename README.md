@@ -142,10 +142,12 @@ The middleware exposes these under its mount path:
 | `GET /api/cells/:graph` | All cells in the named graph with values, deps, status, metadata |
 | `GET /api/cells/:graph/:name/history` | Recent values for a cell (if history is enabled on it) |
 | `GET /api/meter/:name/catalog` | A meter's period and declared metric catalog |
+| `GET /api/meter/:name/subjects?limit=` | Subjects with recorded usage, most-recently-active first |
 | `GET /api/meter/:name/summary?subject=` | A subject's current-period usage across every metric |
 | `GET /api/meter/:name/usage?subject=&metric=&period=` | Windowed usage for one metric (also accepts `rangeStart`/`rangeEnd`) |
 | `GET /api/meter/:name/check?subject=&metric=&limit=` | Usage for one metric checked against a quota |
 | `GET /api/entitle/:name/catalog` | The plan catalog, default plan, and feature/limit universes |
+| `GET /api/entitle/:name/subjects?limit=` | Subjects with an assignment or override, most-recently-configured first |
 | `GET /api/entitle/:name/describe?subject=` | A subject's effective plan, features, and limits |
 | `GET /api/entitle/:name/check?subject=&key=` | A subject's limit checked against live meter usage |
 

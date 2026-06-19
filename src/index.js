@@ -1078,6 +1078,20 @@ export function prsmDevtools(options = {}) {
       }
     })
 
+    router.get('/api/meter/:name/subjects', async (req, res) => {
+      const m = meters[req.params.name]
+      if (!m) return res.status(404).json({ error: 'meter not found' })
+      if (typeof m.subjects !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/meter version does not support listing subjects' })
+      }
+      try {
+        const limit = req.query.limit ? Number(req.query.limit) : undefined
+        res.json({ subjects: await m.subjects(limit ? { limit } : undefined) })
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
     router.get('/api/meter/:name/summary', async (req, res) => {
       const m = meters[req.params.name]
       if (!m) return res.status(404).json({ error: 'meter not found' })
@@ -1143,6 +1157,20 @@ export function prsmDevtools(options = {}) {
       }
       try {
         res.json(e.catalog())
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/entitle/:name/subjects', async (req, res) => {
+      const e = entitlements[req.params.name]
+      if (!e) return res.status(404).json({ error: 'entitlements not found' })
+      if (typeof e.subjects !== 'function') {
+        return res.status(400).json({ error: 'This @prsm/entitle version does not support listing subjects' })
+      }
+      try {
+        const limit = req.query.limit ? Number(req.query.limit) : undefined
+        res.json({ subjects: await e.subjects(limit ? { limit } : undefined) })
       } catch (err) {
         res.status(500).json({ error: err.message })
       }
