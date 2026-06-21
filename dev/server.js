@@ -17,9 +17,7 @@ import { createMeter } from '@prsm/meter'
 import { postgresDriver as meterPostgres } from '@prsm/meter/postgres'
 import { createEntitlements } from '@prsm/entitle'
 import { postgresDriver as entitlePostgres } from '@prsm/entitle/postgres'
-// @prsm/auth is not published yet, so the dev server imports it from the sibling
-// source directly. swap to the package name once it is on npm
-import { createAuthContext, createAuthTables, ActivityLogger, defineRoles, AuthStatus, AuthActivityAction } from '../../auth/src/index.js'
+import { createAuthContext, createAuthTables, ActivityLogger, defineRoles, AuthStatus, AuthActivityAction } from '@prsm/auth'
 import { prsmDevtools } from '../src/index.js'
 
 const tracer = createTracer({ service: 'devtools-dev' })

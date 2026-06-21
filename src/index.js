@@ -1322,6 +1322,15 @@ export function prsmDevtools(options = {}) {
       }
     })
 
+    router.delete('/api/auth/accounts/:id/two-factor/:methodId', async (req, res) => {
+      try {
+        await auth.removeTwoFactorMethod({ accountId: accountId(req) }, parseInt(req.params.methodId, 10))
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
     router.delete('/api/auth/accounts/:id', async (req, res) => {
       try {
         await auth.deleteUserBy({ accountId: accountId(req) })

@@ -2,14 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api.js'
 import { useSSE } from '../sse.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import Card from '../ui/components/Card.vue'
-import Stat from '../ui/components/Stat.vue'
-import Badge from '../ui/components/Badge.vue'
-import Button from '../ui/components/Button.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import { toast } from '../ui/composables/toast.js'
+import { PageHeader, Panel, Card, Stat, Badge, Button, EmptyState, toast } from 'pastel-vue'
 
 const jobs = ref([])
 const events = useSSE()

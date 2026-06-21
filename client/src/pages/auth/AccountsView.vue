@@ -1,20 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { api } from '../../api.js'
-import Panel from '../../ui/components/Panel.vue'
-import PanelSection from '../../ui/components/PanelSection.vue'
-import Badge from '../../ui/components/Badge.vue'
-import Button from '../../ui/components/Button.vue'
-import Table from '../../ui/components/Table.vue'
-import SearchInput from '../../ui/components/SearchInput.vue'
-import Pagination from '../../ui/components/Pagination.vue'
-import Select from '../../ui/components/Select.vue'
-import Drawer from '../../ui/components/Drawer.vue'
-import Modal from '../../ui/components/Modal.vue'
-import Input from '../../ui/components/Input.vue'
-import KeyValue from '../../ui/components/KeyValue.vue'
-import Tooltip from '../../ui/components/Tooltip.vue'
-import { toast } from '../../ui/composables/toast.js'
+import { Panel, PanelSection, Badge, Button, Table, SearchInput, Pagination, Select, Drawer, Modal, Input, KeyValue, Tooltip, ToggleButton, toast } from 'pastel-vue'
 
 const props = defineProps({
   roles: { type: Object, default: () => ({}) },
@@ -34,18 +21,22 @@ const selected = ref(null)
 const detail = ref(null)
 const detailLoading = ref(false)
 const drawerOpen = ref(false)
-const busy = ref(false)
+const pending = ref(null) // label of the action currently in flight, or null
+const busy = computed(() => pending.value !== null)
 
 const newStatus = ref(null)
 const pwModal = ref(false)
 const newPassword = ref('')
 const deleteModal = ref(false)
+const tfaModal = ref(false)
+const tfaToRemove = ref(null)
 
 const accountColumns = [
   { key: 'id', label: 'ID', mono: true, width: '64px' },
   { key: 'email', label: 'Email', primary: true },
   { key: 'statusLabel', label: 'Status' },
   { key: 'roleLabel', label: 'Roles' },
+  { key: 'twoFactorLabel', label: '2FA' },
   { key: 'verifiedLabel', label: 'Verified' },
   { key: 'registeredLabel', label: 'Registered' },
 ]
@@ -81,6 +72,7 @@ const accountRows = computed(() =>
     ...a,
     statusLabel: statusName(a.status),
     roleLabel: roleNames(a.rolemask).join(', ') || '—',
+    twoFactorLabel: (a.twoFactor || []).map(mechanismName).join(', ') || '—',
     verifiedLabel: a.verified ? 'yes' : 'no',
     registeredLabel: fmtDate(a.registered),
   }))
@@ -154,7 +146,7 @@ async function refreshAfterMutation() {
 }
 
 async function action(label, fn) {
-  busy.value = true
+  pending.value = label
   try {
     const res = await fn()
     const data = await res.json().catch(() => ({}))
@@ -169,7 +161,7 @@ async function action(label, fn) {
     toast.error(`${label} failed`, { description: err.message })
     return false
   } finally {
-    busy.value = false
+    pending.value = null
   }
 }
 
@@ -224,6 +216,21 @@ async function deleteAccount() {
     deleteModal.value = false
     drawerOpen.value = false
     selected.value = null
+  }
+}
+
+function promptRemoveTwoFactor(method) {
+  tfaToRemove.value = method
+  tfaModal.value = true
+}
+
+async function removeTwoFactor() {
+  const ok = await action('Remove 2FA method', () =>
+    fetch(api(`/auth/accounts/${selected.value.id}/two-factor/${tfaToRemove.value.id}`), { method: 'DELETE' })
+  )
+  if (ok) {
+    tfaModal.value = false
+    tfaToRemove.value = null
   }
 }
 
@@ -291,25 +298,23 @@ const detailItems = computed(() => {
         <section class="block">
           <h4 class="block__title">Roles</h4>
           <div class="chips">
-            <button
+            <ToggleButton
               v-for="(bit, name) in roles"
               :key="name"
-              type="button"
+              :model-value="(detail.account.rolemask & bit) === bit"
               :disabled="busy"
-              class="role-toggle"
-              @click="toggleRole(bit)"
-            >
-              <Badge :variant="(detail.account.rolemask & bit) === bit ? 'active' : 'default'" size="md">{{ name }}</Badge>
-            </button>
+              size="sm"
+              @update:model-value="toggleRole(bit)"
+            >{{ name }}</ToggleButton>
           </div>
-          <p class="hint">Click a role to grant or revoke it.</p>
+          <p class="hint">Toggle a role to grant or revoke it.</p>
         </section>
 
         <section class="block">
           <h4 class="block__title">Status</h4>
           <div class="row">
             <Select v-model="newStatus" :options="statusOptions" size="sm" />
-            <Button size="sm" :loading="busy" :disabled="Number(newStatus) === detail.account.status" @click="applyStatus">Apply</Button>
+            <Button size="sm" :loading="pending === 'Status change'" :disabled="busy || Number(newStatus) === detail.account.status" @click="applyStatus">Apply</Button>
           </div>
         </section>
 
@@ -331,8 +336,9 @@ const detailItems = computed(() => {
               <Badge :variant="m.verified ? 'active' : 'draft'" size="sm">{{ mechanismName(m.mechanism) }}</Badge>
               <span class="tfa__meta">
                 {{ m.verified ? 'verified' : 'unverified' }}
-                <template v-if="m.backupCodeCount"> · {{ m.backupCodeCount }} backup codes</template>
+                <template v-if="m.backupCodeCount"> · {{ m.backupCodeCount }} backup codes remaining</template>
               </span>
+              <Button class="tfa__remove" size="sm" variant="subtle" :disabled="busy" @click="promptRemoveTwoFactor(m)">Remove</Button>
             </div>
           </div>
           <p v-else class="muted">No two-factor methods.</p>
@@ -341,7 +347,7 @@ const detailItems = computed(() => {
         <section class="block">
           <h4 class="block__title">Danger zone</h4>
           <div class="danger">
-            <Button size="sm" variant="subtle" :loading="busy" @click="forceLogout">Force logout</Button>
+            <Button size="sm" variant="subtle" :loading="pending === 'Force logout'" :disabled="busy" @click="forceLogout">Force logout</Button>
             <Button size="sm" variant="subtle" @click="pwModal = true">Change password</Button>
             <Button size="sm" variant="danger" @click="deleteModal = true">Delete account</Button>
           </div>
@@ -354,7 +360,7 @@ const detailItems = computed(() => {
       <Input v-model="newPassword" type="password" placeholder="New password" />
       <template #footer="{ close }">
         <Button variant="ghost" @click="close">Cancel</Button>
-        <Button variant="primary" :loading="busy" :disabled="!newPassword" @click="changePassword">Change password</Button>
+        <Button variant="primary" :loading="pending === 'Password change'" :disabled="busy || !newPassword" @click="changePassword">Change password</Button>
       </template>
     </Modal>
 
@@ -364,7 +370,17 @@ const detailItems = computed(() => {
       </p>
       <template #footer="{ close }">
         <Button variant="ghost" @click="close">Cancel</Button>
-        <Button variant="danger" :loading="busy" @click="deleteAccount">Delete account</Button>
+        <Button variant="danger" :loading="pending === 'Delete'" @click="deleteAccount">Delete account</Button>
+      </template>
+    </Modal>
+
+    <Modal v-model="tfaModal" title="Remove two-factor method" size="sm">
+      <p class="modal-text">
+        Remove the <strong>{{ tfaToRemove ? mechanismName(tfaToRemove.mechanism) : "" }}</strong> method from <strong>{{ selected?.email }}</strong>? Use this to rescue a user who lost their device - they will no longer be prompted for it at login.
+      </p>
+      <template #footer="{ close }">
+        <Button variant="ghost" @click="close">Cancel</Button>
+        <Button variant="danger" :loading="pending === 'Remove 2FA method'" @click="removeTwoFactor">Remove method</Button>
       </template>
     </Modal>
   </div>
@@ -390,8 +406,6 @@ const detailItems = computed(() => {
   color: var(--ink-40);
 }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.role-toggle { border-radius: var(--radius-comfy); transition: opacity 120ms ease; }
-.role-toggle:disabled { opacity: 0.5; }
 .row { display: flex; align-items: center; gap: 8px; }
 
 .kv-hint {
@@ -409,6 +423,7 @@ const detailItems = computed(() => {
 .provider, .tfa { display: flex; align-items: center; gap: 10px; }
 .provider__id { font-family: var(--mono); font-size: 12.5px; color: var(--ink-60); }
 .tfa__meta { font-size: 12.5px; color: var(--ink-60); }
+.tfa__remove { margin-left: auto; }
 
 .danger { display: flex; flex-wrap: wrap; gap: 8px; }
 

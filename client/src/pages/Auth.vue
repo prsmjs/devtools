@@ -2,10 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Stat from '../ui/components/Stat.vue'
-import Tabs from '../ui/components/Tabs.vue'
+import { PageHeader, EmptyState, Stat, Tabs } from 'pastel-vue'
 
 defineProps({ config: Object })
 

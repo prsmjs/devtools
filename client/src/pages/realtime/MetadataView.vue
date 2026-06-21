@@ -126,7 +126,7 @@
 <script setup>
 import { computed } from 'vue'
 import JsonView from '../../components/JsonView.vue'
-import EmptyState from '../../ui/components/EmptyState.vue'
+import { EmptyState } from 'pastel-vue'
 
 const props = defineProps({
   detail: { type: Object, default: null },

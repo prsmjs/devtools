@@ -1,10 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { api } from '../../api.js'
-import Panel from '../../ui/components/Panel.vue'
-import PanelSection from '../../ui/components/PanelSection.vue'
-import Badge from '../../ui/components/Badge.vue'
-import ScrollArea from '../../ui/components/ScrollArea.vue'
+import { Panel, PanelSection, Badge, ScrollArea } from 'pastel-vue'
 
 const activity = ref([])
 const loaded = ref(false)

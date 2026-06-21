@@ -43,11 +43,7 @@
 <script setup>
 import { computed } from 'vue'
 import JsonView from '../../components/JsonView.vue'
-import Panel from '../../ui/components/Panel.vue'
-import PanelSection from '../../ui/components/PanelSection.vue'
-import Badge from '../../ui/components/Badge.vue'
-import Button from '../../ui/components/Button.vue'
-import EmptyState from '../../ui/components/EmptyState.vue'
+import { Panel, PanelSection, Badge, Button, EmptyState } from 'pastel-vue'
 import ConnectionChip from '../../components/ConnectionChip.vue'
 
 const props = defineProps({

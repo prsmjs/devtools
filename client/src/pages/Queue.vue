@@ -2,15 +2,8 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '../api.js'
 import { useSSE } from '../sse.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import KeyValue from '../ui/components/KeyValue.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
-import Badge from '../ui/components/Badge.vue'
+import { PageHeader, Panel, KeyValue, ScrollArea, Badge, EmptyState, Tabs, FilterChip } from 'pastel-vue'
 import JsonView from '../components/JsonView.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Tabs from '../ui/components/Tabs.vue'
-import FilterChip from '../ui/components/FilterChip.vue'
 
 const snapshot = ref({})
 const queues = ref([])

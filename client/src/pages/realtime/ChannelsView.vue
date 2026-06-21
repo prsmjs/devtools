@@ -81,9 +81,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import Badge from '../../ui/components/Badge.vue'
-import EmptyState from '../../ui/components/EmptyState.vue'
-import ScrollArea from '../../ui/components/ScrollArea.vue'
+import { Badge, EmptyState, ScrollArea } from 'pastel-vue'
 import ConnectionChip from '../../components/ConnectionChip.vue'
 import JsonView from '../../components/JsonView.vue'
 

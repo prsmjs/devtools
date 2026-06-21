@@ -4,17 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.js'
 import WorkflowGraph from '../components/WorkflowGraph.vue'
 import JsonView from '../components/JsonView.vue'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import KeyValue from '../ui/components/KeyValue.vue'
-import Badge from '../ui/components/Badge.vue'
-import Button from '../ui/components/Button.vue'
-import Modal from '../ui/components/Modal.vue'
-import Textarea from '../ui/components/Textarea.vue'
-import Callout from '../ui/components/Callout.vue'
-import Breadcrumbs from '../ui/components/Breadcrumbs.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
+import { PageHeader, Panel, PanelSection, KeyValue, Badge, Button, Modal, Textarea, Callout, Breadcrumbs, EmptyState } from 'pastel-vue'
 
 // a workflow is cyclic if a DFS from start finds an edge back to a node already
 // on the current path (a back-edge)

@@ -1,11 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api } from '../api.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Badge from '../ui/components/Badge.vue'
-import Button from '../ui/components/Button.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
+import { PageHeader, EmptyState, Badge, Button, ScrollArea } from 'pastel-vue'
 
 const traces = ref([])
 const selectedId = ref(null)

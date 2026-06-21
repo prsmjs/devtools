@@ -1,14 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '../api.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Badge from '../ui/components/Badge.vue'
-import Button from '../ui/components/Button.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import { toast } from '../ui/composables/toast.js'
+import { PageHeader, Panel, PanelSection, Badge, Button, ScrollArea, EmptyState, toast } from 'pastel-vue'
 
 const managers = ref([])
 const loaded = ref(false)

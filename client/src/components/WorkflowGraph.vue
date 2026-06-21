@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import Button from '../ui/components/Button.vue'
+import { Button } from 'pastel-vue'
 
 const props = defineProps({
   graph: { type: Object, required: true },

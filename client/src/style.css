@@ -1,4 +1,4 @@
-@import "./ui/pastel.css";
+@import "pastel-vue/style.css";
 
 #app {
   height: 100vh;

@@ -36,10 +36,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import Panel from '../../ui/components/Panel.vue'
-import PanelSection from '../../ui/components/PanelSection.vue'
-import Badge from '../../ui/components/Badge.vue'
-import EmptyState from '../../ui/components/EmptyState.vue'
+import { Panel, PanelSection, Badge, EmptyState } from 'pastel-vue'
 
 const props = defineProps({
   exposed: { type: Object, default: () => ({}) },

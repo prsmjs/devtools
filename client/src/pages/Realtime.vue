@@ -66,10 +66,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRealtimeApi } from '../composables/useRealtimeApi.js'
 import ConnectionPicker from '../components/ConnectionPicker.vue'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Tabs from '../ui/components/Tabs.vue'
+import { PageHeader, Panel, PanelSection, Tabs } from 'pastel-vue'
 
 const route = useRoute()
 const router = useRouter()

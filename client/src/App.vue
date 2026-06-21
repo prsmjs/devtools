@@ -3,9 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { api } from './api.js'
-import AppLayout from './ui/components/AppLayout.vue'
-import SideNav from './ui/components/SideNav.vue'
-import Notifications from './ui/components/Notifications.vue'
+import { AppLayout, SideNav, Notifications } from 'pastel-vue'
 
 const config = ref({ queue: [], cron: false, limit: [], workflow: false, realtime: false, cells: [], lock: [], cache: [], meter: [], entitle: [], trace: false, auth: false })
 const route = useRoute()

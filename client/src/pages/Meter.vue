@@ -1,15 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { api } from '../api.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Badge from '../ui/components/Badge.vue'
-import Input from '../ui/components/Input.vue'
-import Button from '../ui/components/Button.vue'
-import Select from '../ui/components/Select.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
+import { PageHeader, EmptyState, Panel, PanelSection, Badge, Input, Button, Select, ScrollArea } from 'pastel-vue'
 
 defineProps({ config: Object })
 

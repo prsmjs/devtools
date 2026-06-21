@@ -1,11 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useSSE } from '../sse.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import ToggleGroup from '../ui/components/ToggleGroup.vue'
-import Panel from '../ui/components/Panel.vue'
-import Badge from '../ui/components/Badge.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
+import { PageHeader, ToggleGroup, Panel, Badge, EmptyState } from 'pastel-vue'
 
 const props = defineProps({ config: Object })
 const events = useSSE()

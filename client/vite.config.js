@@ -4,6 +4,9 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   base: './',
+  // pastel-vue ships raw .vue source, so keep esbuild from pre-bundling it and
+  // let plugin-vue compile the SFCs from node_modules
+  optimizeDeps: { exclude: ['pastel-vue'] },
   build: {
     outDir: '../dist/client',
     emptyOutDir: true,

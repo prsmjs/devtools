@@ -1,12 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '../api.js'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Input from '../ui/components/Input.vue'
-import Button from '../ui/components/Button.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
-import { toast } from '../ui/composables/toast.js'
+import { Panel, PanelSection, Input, Button, ScrollArea, toast } from 'pastel-vue'
 
 const props = defineProps({ name: { type: String, required: true } })
 

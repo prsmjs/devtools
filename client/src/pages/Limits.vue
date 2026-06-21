@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
+import { PageHeader, EmptyState } from 'pastel-vue'
 import LimiterPanel from '../components/LimiterPanel.vue'
 
 const limiters = ref([])

@@ -3,16 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '../api.js'
 import { useSSE } from '../sse.js'
 import JsonView from '../components/JsonView.vue'
-import PageHeader from '../ui/components/PageHeader.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Tabs from '../ui/components/Tabs.vue'
-import KeyValue from '../ui/components/KeyValue.vue'
-import ScrollArea from '../ui/components/ScrollArea.vue'
-import SectionLabel from '../ui/components/SectionLabel.vue'
-import Button from '../ui/components/Button.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Badge from '../ui/components/Badge.vue'
+import { PageHeader, Panel, PanelSection, Tabs, KeyValue, ScrollArea, SectionLabel, Button, EmptyState, Badge } from 'pastel-vue'
 
 const props = defineProps({ config: Object })
 

@@ -2,11 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api.js'
 import { basePath } from '../base.js'
-import PageHeader from '../ui/components/PageHeader.vue'
-import EmptyState from '../ui/components/EmptyState.vue'
-import Panel from '../ui/components/Panel.vue'
-import PanelSection from '../ui/components/PanelSection.vue'
-import Badge from '../ui/components/Badge.vue'
+import { PageHeader, EmptyState, Panel, PanelSection, Badge } from 'pastel-vue'
 
 const stats = ref({})
 const loaded = ref(false)
