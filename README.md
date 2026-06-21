@@ -4,7 +4,7 @@
 
 <h1 align="center">@prsm/devtools</h1>
 
-Read-only Express middleware that provides a live dashboard for observing prsm infrastructure at runtime. Pass your instances and mount the router to get a full UI.
+Express middleware that provides a live dashboard for observing prsm infrastructure at runtime. Most views are read-only; a few panels expose actions (release a lock, run a cron job, manage an auth account). Pass your instances and mount the router to get a full UI.
 
 <p align="center">
   <img src=".github/record.png" width="800" alt="realtime records view">
@@ -84,6 +84,8 @@ Includes a connection picker sidebar for filtering all views by a specific clien
 
 **Entitle** - inspector for `@prsm/entitle`. The plan catalog shows every plan's features and limits and the default plan. Resolve a subject to see its effective plan, feature flags, and limits after overrides, and check any limit against live usage when a meter is composed in.
 
+**Auth** - admin panel for `@prsm/auth`, bound to the object returned by `createAuthContext`. An overview row shows account, provider, and 2FA counts alongside 24-hour login and failure totals. The accounts table supports search and pagination; opening an account reveals its roles, status, linked OAuth providers, two-factor methods, and a detail summary. From the drawer you can grant or revoke roles, change account status (ban, lock, suspend), force a logout, change the password, or delete the account, each behind a confirmation. A separate activity tab streams the recent audit log. Password hashes and TOTP secrets never leave the server.
+
 **Cells** - one or more `@prsm/cells` graphs with two views per graph:
 
 - **Table** - every cell in the graph with current value, dependencies, status, and last-updated time. Click a row to open a detail panel below
@@ -113,6 +115,7 @@ app.use('/devtools', prsmDevtools(options))
 | `cells` | `Graph` or `Object<string, Graph>` | A `@prsm/cells` graph instance, or a named map of graphs |
 | `meter` | `Meter` or `Object<string, Meter>` | A `@prsm/meter` instance, or a named map of meters |
 | `entitle` | `Entitlements` or `Object<string, Entitlements>` | A `@prsm/entitle` instance, or a named map of resolvers |
+| `auth` | `AuthContext` | The object returned by `@prsm/auth`'s `createAuthContext(config)` |
 | `realtimeChannelBufferSize` | `number` | How many recent messages to retain per realtime channel (default `100`) |
 
 All options are optional. The dashboard adapts to what's provided.
@@ -150,6 +153,15 @@ The middleware exposes these under its mount path:
 | `GET /api/entitle/:name/subjects?limit=` | Subjects with an assignment or override, most-recently-configured first |
 | `GET /api/entitle/:name/describe?subject=` | A subject's effective plan, features, and limits |
 | `GET /api/entitle/:name/check?subject=&key=` | A subject's limit checked against live meter usage |
+| `GET /api/auth/overview` | Account/provider/2FA counts, activity stats, and the role/status/mechanism maps |
+| `GET /api/auth/accounts?limit=&offset=&search=` | Paginated accounts (password hashes stripped) |
+| `GET /api/auth/accounts/:id` | One account with linked providers and two-factor methods (secrets stripped) |
+| `GET /api/auth/activity?limit=&accountId=` | Recent activity log entries |
+| `POST /api/auth/accounts/:id/status` | Change account status |
+| `POST /api/auth/accounts/:id/roles` | Add or remove a role (`{ role, op }`) |
+| `POST /api/auth/accounts/:id/force-logout` | Force logout of all sessions |
+| `POST /api/auth/accounts/:id/password` | Change the account password |
+| `DELETE /api/auth/accounts/:id` | Delete the account and all associated data |
 
 ## How It Works
 

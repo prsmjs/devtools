@@ -55,7 +55,7 @@ function patternToString(p) {
  */
 export function prsmDevtools(options = {}) {
   const router = Router()
-  const { cron, limit, workflow, realtime, lock, cache, tracer } = options
+  const { cron, limit, workflow, realtime, lock, cache, tracer, auth } = options
   const queues = normalizeQueues(options.queue)
   const queueHistoryLimit = options.queueHistorySize ?? 200
   const traceLimit = options.traceBufferSize ?? 50000
@@ -348,6 +348,7 @@ export function prsmDevtools(options = {}) {
       meter: meters ? Object.keys(meters) : [],
       entitle: entitlements ? Object.keys(entitlements) : [],
       trace: !!tracer,
+      auth: !!auth,
     })
   })
 
@@ -1204,6 +1205,127 @@ export function prsmDevtools(options = {}) {
         const range = parseRange(req.query)
         if (range) usageQuery.range = range
         res.json(await e.check(subject, key, usageQuery))
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+  }
+
+  if (auth) {
+    // never let secrets leave the process. the account row carries a password
+    // hash and 2fa rows carry totp secrets + backup codes - strip them and
+    // expose only the booleans the dashboard needs
+    const safeAccount = (a) => {
+      if (!a) return a
+      const { password, ...rest } = a
+      return { ...rest, hasPassword: !!password }
+    }
+    const safeTwoFactor = (m) => ({
+      id: m.id,
+      mechanism: m.mechanism,
+      verified: m.verified,
+      created_at: m.created_at,
+      last_used_at: m.last_used_at,
+      backupCodeCount: Array.isArray(m.backup_codes) ? m.backup_codes.length : 0,
+    })
+    const accountId = (req) => parseInt(req.params.id, 10)
+
+    router.get('/api/auth/overview', async (_req, res) => {
+      try {
+        const [stats, activityStats] = await Promise.all([auth.getStats(), auth.getActivityStats()])
+        res.json({
+          stats,
+          activityStats,
+          roles: auth.getRoles?.() ?? {},
+          statuses: auth.getStatuses?.() ?? {},
+          mechanisms: auth.getMechanisms?.() ?? {},
+        })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/auth/accounts', async (req, res) => {
+      try {
+        const limit = Math.min(Number(req.query.limit) || 50, 200)
+        const offset = Number(req.query.offset) || 0
+        const search = typeof req.query.search === 'string' && req.query.search.trim() ? req.query.search.trim() : undefined
+        const { accounts, total } = await auth.listAccounts({ limit, offset, search })
+        res.json({ accounts: accounts.map(safeAccount), total })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/auth/accounts/:id', async (req, res) => {
+      try {
+        const id = accountId(req)
+        const account = await auth.getAccount({ accountId: id })
+        const [providers, twoFactor] = await Promise.all([
+          auth.getProvidersForAccount(id),
+          auth.getTwoFactorMethods(id),
+        ])
+        res.json({ account: safeAccount(account), providers, twoFactor: twoFactor.map(safeTwoFactor) })
+      } catch (err) {
+        const status = /not found/i.test(err.message) ? 404 : 400
+        res.status(status).json({ error: err.message })
+      }
+    })
+
+    router.get('/api/auth/activity', async (req, res) => {
+      try {
+        const limit = Math.min(Number(req.query.limit) || 100, 1000)
+        const forAccount = req.query.accountId ? parseInt(req.query.accountId, 10) : undefined
+        const activity = await auth.getRecentActivity(limit, forAccount)
+        res.json({ activity })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/auth/accounts/:id/status', jsonBody, async (req, res) => {
+      try {
+        await auth.setStatusForUserBy({ accountId: accountId(req) }, Number(req.body.status))
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/auth/accounts/:id/roles', jsonBody, async (req, res) => {
+      try {
+        const id = accountId(req)
+        const role = Number(req.body.role)
+        if (req.body.op === 'remove') await auth.removeRoleForUserBy({ accountId: id }, role)
+        else await auth.addRoleForUserBy({ accountId: id }, role)
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/auth/accounts/:id/force-logout', async (req, res) => {
+      try {
+        await auth.forceLogoutForUserBy({ accountId: accountId(req) })
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.post('/api/auth/accounts/:id/password', jsonBody, async (req, res) => {
+      try {
+        await auth.changePasswordForUserBy({ accountId: accountId(req) }, String(req.body.password ?? ''))
+        res.json({ ok: true })
+      } catch (err) {
+        res.status(400).json({ error: err.message })
+      }
+    })
+
+    router.delete('/api/auth/accounts/:id', async (req, res) => {
+      try {
+        await auth.deleteUserBy({ accountId: accountId(req) })
+        res.json({ ok: true })
       } catch (err) {
         res.status(400).json({ error: err.message })
       }

@@ -15,6 +15,9 @@ import LocksPage from './pages/Locks.vue'
 import CachePage from './pages/Cache.vue'
 import MeterPage from './pages/Meter.vue'
 import EntitlePage from './pages/Entitle.vue'
+import AuthPage from './pages/Auth.vue'
+import AuthAccountsView from './pages/auth/AccountsView.vue'
+import AuthActivityView from './pages/auth/ActivityView.vue'
 import TracesPage from './pages/Traces.vue'
 import RoomsView from './pages/realtime/RoomsView.vue'
 import ChannelsView from './pages/realtime/ChannelsView.vue'
@@ -45,6 +48,15 @@ const router = createRouter({
     { path: '/cache', component: CachePage },
     { path: '/meter', component: MeterPage },
     { path: '/entitle', component: EntitlePage },
+    {
+      path: '/auth',
+      component: AuthPage,
+      redirect: '/auth/accounts',
+      children: [
+        { path: 'accounts', component: AuthAccountsView },
+        { path: 'activity', component: AuthActivityView },
+      ],
+    },
     { path: '/traces', component: TracesPage },
     { path: '/queue', component: QueuePage },
     { path: '/cron', component: CronPage },

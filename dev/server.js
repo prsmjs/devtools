@@ -17,6 +17,9 @@ import { createMeter } from '@prsm/meter'
 import { postgresDriver as meterPostgres } from '@prsm/meter/postgres'
 import { createEntitlements } from '@prsm/entitle'
 import { postgresDriver as entitlePostgres } from '@prsm/entitle/postgres'
+// @prsm/auth is not published yet, so the dev server imports it from the sibling
+// source directly. swap to the package name once it is on npm
+import { createAuthContext, createAuthTables, ActivityLogger, defineRoles, AuthStatus, AuthActivityAction } from '../../auth/src/index.js'
 import { prsmDevtools } from '../src/index.js'
 
 const tracer = createTracer({ service: 'devtools-dev' })
@@ -681,11 +684,115 @@ setInterval(() => {
   if (Math.random() < 0.3) meter.record({ subject, metric: 'storage', quantity: +(Math.random() * 20).toFixed(1) }).catch(() => {})
 }, 3000)
 
+const AuthRoles = defineRoles('admin', 'support', 'billing', 'editor', 'viewer')
+
+const authConfig = {
+  db: pgPool,
+  tablePrefix: 'demo_auth_',
+  roles: AuthRoles,
+  activityLog: { enabled: true },
+  tracer,
+}
+
+await createAuthTables(authConfig)
+const authContext = createAuthContext(authConfig)
+const authActivityLogger = new ActivityLogger(authConfig)
+
+const fakeReq = (ua, ip) => ({ headers: { 'user-agent': ua }, socket: { remoteAddress: ip } })
+const USER_AGENTS = [
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile Safari/604.1',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0',
+]
+const randUa = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
+const randIp = () => `${10 + Math.floor(Math.random() * 90)}.0.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+
+const AUTH_SEED = [
+  { email: 'amara@acme.test', roles: AuthRoles.admin | AuthRoles.support, providers: ['github'], totp: true },
+  { email: 'devon@acme.test', roles: AuthRoles.editor, providers: ['google'] },
+  { email: 'priya@acme.test', roles: AuthRoles.support | AuthRoles.editor, totp: true },
+  { email: 'noor@acme.test', roles: AuthRoles.viewer },
+  { email: 'kit@acme.test', roles: AuthRoles.billing, status: AuthStatus.Suspended },
+  { email: 'sasha@acme.test', roles: AuthRoles.viewer, providers: ['azure'] },
+  { email: 'banned-bot@spam.test', roles: 0, status: AuthStatus.Banned },
+  { email: 'locked-out@acme.test', roles: AuthRoles.viewer, status: AuthStatus.Locked },
+  { email: 'pending@acme.test', roles: 0, unverified: true },
+  { email: 'taylor@acme.test', roles: AuthRoles.editor | AuthRoles.billing },
+  { email: 'morgan@acme.test', roles: AuthRoles.support, providers: ['github', 'google'] },
+  { email: 'jordan@acme.test', roles: AuthRoles.viewer },
+]
+
+async function seedAuth() {
+  const existing = await authContext.listAccounts({ limit: 1 })
+  if (existing.total > 0) return // already seeded; dev server restarted
+
+  for (const spec of AUTH_SEED) {
+    try {
+      const account = spec.unverified
+        ? await authContext.register(spec.email, 'Password123!', undefined, () => {})
+        : await authContext.createUser({ email: spec.email, password: 'Password123!' })
+
+      if (spec.roles) await authContext.addRoleForUserBy({ accountId: account.id }, spec.roles)
+      if (spec.status != null) await authContext.setStatusForUserBy({ accountId: account.id }, spec.status)
+
+      for (const provider of spec.providers ?? []) {
+        await pgPool.query(
+          `INSERT INTO demo_auth_providers (account_id, provider, provider_id, provider_email, provider_username)
+           VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+          [account.id, provider, `${provider}-${account.id}-${Math.floor(Math.random() * 1e6)}`, spec.email, spec.email.split('@')[0]],
+        )
+      }
+
+      if (spec.totp) {
+        await pgPool.query(
+          `INSERT INTO demo_auth_2fa_methods (account_id, mechanism, secret, backup_codes, verified)
+           VALUES ($1, 1, $2, $3, true) ON CONFLICT DO NOTHING`,
+          [account.id, 'SEEDSECRETSEEDSECRET', ['11111111', '22222222', '33333333', '44444444']],
+        )
+      }
+
+      // backfill an activity trail so the feed and 24h stats have something to show
+      const events = spec.status === AuthStatus.Banned
+        ? [AuthActivityAction.FailedLogin, AuthActivityAction.FailedLogin, AuthActivityAction.StatusChanged]
+        : [AuthActivityAction.Register, AuthActivityAction.Login, AuthActivityAction.Login, AuthActivityAction.Logout]
+      for (const action of events) {
+        const success = action !== AuthActivityAction.FailedLogin
+        await authActivityLogger.logActivity(account.id, action, fakeReq(randUa(), randIp()), success, { email: spec.email })
+      }
+    } catch (err) {
+      console.error('auth seed failed for', spec.email, err.message)
+    }
+  }
+  console.log(`seeded ${AUTH_SEED.length} demo auth accounts`)
+}
+
+await seedAuth().catch((err) => console.error('auth seed error', err.message))
+
+// keep the activity feed live: a synthetic login/failed-login every few seconds
+setInterval(async () => {
+  try {
+    const { accounts } = await authContext.listAccounts({ limit: 20 })
+    const active = accounts.filter((a) => a.status === AuthStatus.Normal)
+    if (!active.length) return
+    const account = active[Math.floor(Math.random() * active.length)]
+    const failed = Math.random() < 0.25
+    await authActivityLogger.logActivity(
+      account.id,
+      failed ? AuthActivityAction.FailedLogin : AuthActivityAction.Login,
+      fakeReq(randUa(), randIp()),
+      !failed,
+      { email: account.email },
+    )
+  } catch {}
+}, 4000)
+
 app.use(
   '/devtools',
   prsmDevtools({
     meter,
     entitle,
+    auth: authContext,
     queue: { default: queue, emails: emailQueue },
     cron,
     limit: { api: apiLimiter, uploads: uploadLimiter },
