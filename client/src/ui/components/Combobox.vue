@@ -22,6 +22,8 @@ const props = defineProps({
   // when false, the field behaves as a plain single-select: no typing,
   // pointer cursor, click to open, choose only from the list
   searchable: { type: Boolean, default: true },
+  clearable: { type: Boolean, default: true },
+  size: { type: String, default: "md" }, // sm | md | lg
 })
 const emit = defineEmits(["update:modelValue"])
 
@@ -69,7 +71,7 @@ const filtered = computed(() => {
     :open="open"
     @update:open="v => open = v"
     :disabled="disabled"
-    class="pc-combobox"
+    :class="['pc-combobox', `pc-combobox--${size}`]"
   >
     <ComboboxAnchor class="pc-combobox__anchor">
       <ComboboxInput
@@ -82,7 +84,7 @@ const filtered = computed(() => {
         @click="onInputClick"
       />
       <button
-        v-if="hasValue && !disabled"
+        v-if="hasValue && !disabled && clearable"
         type="button"
         class="pc-combobox__clear"
         aria-label="Clear"
@@ -140,6 +142,11 @@ const filtered = computed(() => {
 }
 .pc-combobox__anchor:hover:not(:focus-within) { border-color: var(--ink-20); }
 .pc-combobox__anchor:focus-within { border-color: var(--midnight); box-shadow: var(--focus-ring); }
+.pc-combobox--sm .pc-combobox__anchor { height: var(--control-h-sm); }
+.pc-combobox--lg .pc-combobox__anchor { height: var(--control-h-lg); }
+.pc-combobox--sm .pc-combobox__input { padding: 0 10px; font-size: 13px; }
+.pc-combobox--lg .pc-combobox__input { padding: 0 14px; font-size: 15px; }
+.pc-combobox--sm .pc-combobox__trigger { width: 26px; }
 .pc-combobox__input {
   flex: 1;
   border: 0;
@@ -226,6 +233,7 @@ const filtered = computed(() => {
   user-select: none;
 }
 .pc-combobox__item[data-highlighted] { background: var(--ink-04); }
+.pc-combobox__item:active { background: var(--ink-08); }
 .pc-combobox__item[data-state="checked"] { font-weight: 500; }
 .pc-combobox__label { flex: 1; min-width: 0; }
 .pc-combobox__indicator { color: var(--ink); display: inline-flex; align-items: center; }

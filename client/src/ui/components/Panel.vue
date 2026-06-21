@@ -40,7 +40,7 @@ defineProps({
 
 .pc-panel__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   padding: 22px 24px;
@@ -50,8 +50,8 @@ defineProps({
     radial-gradient(80% 120% at 0% 0%, rgba(189, 187, 255, 0.20), transparent 72%),
     radial-gradient(70% 110% at 100% 0%, rgba(255, 214, 245, 0.14), transparent 72%);
 }
-.pc-panel__header-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 28px; justify-content: center; }
-.pc-panel__aside { flex-shrink: 0; display: flex; align-items: center; min-height: 28px; }
+.pc-panel__header-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pc-panel__aside { flex-shrink: 0; }
 
 .pc-panel__title {
   margin: 0;

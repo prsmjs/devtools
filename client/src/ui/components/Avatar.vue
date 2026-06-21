@@ -15,6 +15,9 @@ const props = defineProps({
    *   lavender lavender bg + midnight text     (the one soft accent allowed in palette)
    */
   tone: { type: String, default: "dark" },
+  // renders as a real <button> with hover, focus ring, and the same active push-down
+  // as Button - for avatars that open a menu or navigate
+  interactive: { type: Boolean, default: false },
 })
 
 const initials = computed(() => {
@@ -27,10 +30,12 @@ const initials = computed(() => {
 </script>
 
 <template>
-  <span
-    :class="['pc-avatar', `pc-avatar--${size}`, `pc-avatar--${shape}`, `pc-avatar--${tone}`]"
+  <component
+    :is="interactive ? 'button' : 'span'"
+    :type="interactive ? 'button' : undefined"
+    :class="['pc-avatar', `pc-avatar--${size}`, `pc-avatar--${shape}`, `pc-avatar--${tone}`, { 'pc-avatar--interactive': interactive }]"
     :aria-label="alt || name || undefined"
-    role="img"
+    :role="interactive ? undefined : 'img'"
   >
     <img v-if="src" :src="src" :alt="alt || name" class="pc-avatar__img" />
     <slot v-else>
@@ -42,7 +47,7 @@ const initials = computed(() => {
         </svg>
       </span>
     </slot>
-  </span>
+  </component>
 </template>
 
 <style scoped>
@@ -61,6 +66,27 @@ const initials = computed(() => {
 }
 .pc-avatar__img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pc-avatar__initials { font-variant-numeric: tabular-nums; }
+
+/* interactive: a real button that pushes down on press like Button */
+.pc-avatar--interactive {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 140ms ease, transform 60ms ease;
+}
+.pc-avatar--interactive:hover { box-shadow: 0 0 0 3px var(--ink-08); }
+.pc-avatar--interactive:focus-visible { box-shadow: var(--focus-ring); }
+.pc-avatar--interactive:active { transform: translateY(1.5px); }
+/* the invert tone already carries an inset border ring - keep it on hover/focus */
+.pc-avatar--interactive.pc-avatar--invert:hover { box-shadow: inset 0 0 0 1px var(--ink-20), 0 0 0 3px var(--ink-08); }
+.pc-avatar--interactive.pc-avatar--invert:focus-visible { box-shadow: inset 0 0 0 1px var(--ink-08), var(--focus-ring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-avatar--interactive { transition: box-shadow 140ms ease; }
+}
 
 /* sizes */
 .pc-avatar--xs { width: 20px; height: 20px; font-size: 9px;  letter-spacing: -0.2px; }

@@ -1,13 +1,12 @@
 <script setup>
 defineProps({
-  dark: { type: Boolean, default: false },
   vertical: { type: Boolean, default: false },
   dashed: { type: Boolean, default: false },
 })
 </script>
 
 <template>
-  <hr :class="['pc-divider', { 'pc-divider--dark': dark, 'pc-divider--vertical': vertical, 'pc-divider--dashed': dashed }]" />
+  <hr :class="['pc-divider', { 'pc-divider--vertical': vertical, 'pc-divider--dashed': dashed }]" />
 </template>
 
 <style scoped>
@@ -18,7 +17,6 @@ defineProps({
   height: 1px;
   width: 100%;
 }
-.pc-divider--dark { background: var(--paper-on-dark-12); }
 .pc-divider--vertical { width: 1px; height: 100%; }
 
 .pc-divider--dashed {
@@ -26,7 +24,6 @@ defineProps({
   height: 0;
   border-top: 1px dashed var(--ink-20);
 }
-.pc-divider--dashed.pc-divider--dark { border-top-color: var(--paper-on-dark-12); }
 .pc-divider--dashed.pc-divider--vertical {
   height: 100%;
   width: 0;

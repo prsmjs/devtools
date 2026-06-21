@@ -224,6 +224,7 @@ watch(open, (v) => {
 }
 .pc-multiselect__option:hover:not(:disabled) { background: var(--ink-04); }
 .pc-multiselect__option:focus-visible { background: var(--ink-04); box-shadow: var(--focus-ring); }
+.pc-multiselect__option:active:not(:disabled) { background: var(--ink-08); }
 .pc-multiselect__option--selected { color: var(--ink); font-weight: 500; }
 .pc-multiselect__option--disabled { color: var(--ink-40); cursor: not-allowed; }
 .pc-multiselect__check {

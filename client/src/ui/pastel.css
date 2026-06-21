@@ -178,12 +178,13 @@ p { margin: 0; }
   line-height: 1.2;
   cursor: pointer;
   outline: none;
-  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 60ms ease;
   min-width: 180px;
   text-align: left;
   box-sizing: border-box;
 }
 .pc-datepicker__trigger:hover:not(:disabled) { border-color: var(--ink-20); background: var(--ink-04); }
+.pc-datepicker__trigger:active:not(:disabled) { background: var(--ink-08); border-color: var(--ink-20); transform: translateY(1px); }
 .pc-datepicker__trigger:focus-visible { border-color: var(--midnight); box-shadow: var(--focus-ring); }
 .pc-datepicker__trigger:disabled { opacity: 0.5; cursor: not-allowed; }
 .pc-datepicker__trigger--empty .pc-datepicker__value { color: var(--ink-40); }
@@ -195,7 +196,7 @@ p { margin: 0; }
   padding: 12px;
   font-family: var(--display);
   user-select: none;
-  min-width: 296px;
+  width: max-content;
 }
 .pc-cal__head {
   display: flex;
@@ -230,10 +231,10 @@ p { margin: 0; }
 }
 .pc-cal__nav:hover { background: var(--ink-04); color: var(--ink); }
 .pc-cal__nav:focus-visible { box-shadow: var(--focus-ring); }
-.pc-cal__grid { width: 100%; border-collapse: collapse; }
+.pc-cal__grid { width: auto; border-collapse: collapse; }
 .pc-cal__row { display: flex; }
 .pc-cal__weekday {
-  flex: 1;
+  flex: 0 0 32px;
   font-family: var(--mono);
   text-transform: uppercase;
   font-size: 10px;
@@ -244,13 +245,13 @@ p { margin: 0; }
   padding: 8px 0;
 }
 .pc-cal__cell {
-  flex: 1;
+  flex: 0 0 32px;
   padding: 2px;
-  min-width: 36px;
+  min-width: 32px;
 }
 .pc-cal__day {
   width: 100%;
-  height: 36px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -303,3 +304,37 @@ p { margin: 0; }
 @keyframes pc-fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 .pc-slide-up { animation: pc-slideUp 240ms ease-out both; }
 @keyframes pc-slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---------- syntax highlighting theme (Prism token classes) ----------
+   shared by DiffViewer and CodeBlock - muted to sit inside the pastel system */
+.pc-syntax { --pc-syn-func: #2d5b9e; }
+.pc-syntax .token.comment,
+.pc-syntax .token.prolog,
+.pc-syntax .token.doctype,
+.pc-syntax .token.cdata { color: var(--ink-40); font-style: italic; }
+.pc-syntax .token.punctuation { color: var(--ink-60); }
+.pc-syntax .token.keyword,
+.pc-syntax .token.atrule,
+.pc-syntax .token.important,
+.pc-syntax .token.tag,
+.pc-syntax .token.selector { color: var(--status-paused); }
+.pc-syntax .token.string,
+.pc-syntax .token.char,
+.pc-syntax .token.attr-value,
+.pc-syntax .token.regex,
+.pc-syntax .token.inserted { color: var(--status-active); }
+.pc-syntax .token.number,
+.pc-syntax .token.boolean,
+.pc-syntax .token.constant,
+.pc-syntax .token.symbol { color: var(--status-warning); }
+.pc-syntax .token.function,
+.pc-syntax .token.class-name,
+.pc-syntax .token.builtin,
+.pc-syntax .token.property,
+.pc-syntax .token.key,
+.pc-syntax .token.attr-name { color: var(--pc-syn-func); }
+.pc-syntax .token.operator,
+.pc-syntax .token.variable { color: var(--ink); }
+.pc-syntax .token.namespace { opacity: 0.6; }
+.pc-syntax .token.bold { font-weight: 600; }
+.pc-syntax .token.italic { font-style: italic; }

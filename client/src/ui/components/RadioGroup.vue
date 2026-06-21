@@ -52,9 +52,11 @@ const normalize = (o) => (typeof o === "object" && o !== null) ? o : { value: o,
   border-radius: 50%;
   background: var(--paper);
   position: relative;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 .pc-radio:hover .pc-radio__dot { border-color: var(--ink-40); }
+.pc-radio:active:not(.pc-radio--disabled) .pc-radio__dot { border-color: var(--ink-40); background: var(--ink-08); }
+.pc-radio--checked:active:not(.pc-radio--disabled) .pc-radio__dot { border-color: var(--midnight-active); }
 .pc-radio__input:focus-visible + .pc-radio__dot { box-shadow: var(--focus-ring); border-color: var(--midnight); }
 .pc-radio--checked .pc-radio__dot { border-color: var(--midnight); }
 .pc-radio--checked .pc-radio__dot::after {
@@ -65,5 +67,7 @@ const normalize = (o) => (typeof o === "object" && o !== null) ? o : { value: o,
   width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--midnight);
+  transition: background 140ms ease;
 }
+.pc-radio--checked:active:not(.pc-radio--disabled) .pc-radio__dot::after { background: var(--midnight-active); }
 </style>

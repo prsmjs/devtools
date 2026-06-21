@@ -98,7 +98,7 @@ watch(
   bottom: 3px;
   background: var(--paper);
   border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(1, 1, 32, 0.06);
+  box-shadow: inset 0 0 0 1px var(--ink-08);
 }
 
 .pc-tab {
@@ -136,8 +136,14 @@ watch(
 }
 
 /* pills variant */
-.pc-tabs--pills { background: var(--ink-04); padding: 3px; border-radius: var(--radius-sharp); }
-.pc-tabs--pills .pc-tab { padding: 5px 12px; }
+.pc-tabs--pills {
+  background: var(--ink-08);
+  padding: 3px;
+  border-radius: var(--radius-sharp);
+}
+.pc-tabs--pills .pc-tab { padding: 5px 12px; color: var(--ink-60); }
+.pc-tabs--pills .pc-tab:hover:not(.pc-tab--active) { color: var(--ink); }
+.pc-tabs--pills .pc-tab--active { color: var(--ink); }
 
 .pc-tabs--sm .pc-tab { font-size: 13px; padding: 5px 10px; }
 
@@ -151,7 +157,11 @@ watch(
   padding: 0 5px;
   color: var(--ink-60);
 }
-.pc-tab--active .pc-tab__badge { color: var(--ink); }
+.pc-tabs--pills .pc-tab__badge {
+  background: var(--paper);
+  border-color: var(--ink-08);
+}
+.pc-tabs--underline .pc-tab--active .pc-tab__badge { color: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .pc-tabs__indicator--animate { transition: opacity 120ms ease; }

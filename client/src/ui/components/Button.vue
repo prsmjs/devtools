@@ -1,14 +1,17 @@
 <script setup>
-import { ref, computed, useSlots, watch, nextTick } from "vue"
+import { ref, computed, useSlots, watch, nextTick, onUnmounted } from "vue"
 import { Icon } from "@iconify/vue"
 
 const props = defineProps({
-  variant: { type: String, default: "primary" }, // primary | ghost | glass | subtle | danger
+  variant: { type: String, default: "primary" }, // primary | outline | ghost | glass | subtle | danger
   size: { type: String, default: "md" }, // sm | md | lg
   disabled: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   // optional label shown while loading (e.g. "Saving"); falls back to the slot
   loadingLabel: { type: String, default: "" },
+  // minimum time the loading state stays visible once shown, so a fast async
+  // action still flashes the spinner/label instead of jittering. set 0 to disable
+  minLoadingMs: { type: Number, default: 400 },
   // optional trailing mono chip, e.g. "+ Notes"
   hint: { type: String, default: "" },
   // iconify icon name, e.g. "lucide:settings" - icon-only when no slot content
@@ -20,13 +23,39 @@ const slots = useSlots()
 // icon + no label -> a perfect-square icon button
 const iconOnly = computed(() => !!props.icon && !slots.default)
 
+// loading shown to the user. follows props.loading on, but holds on for at least
+// minLoadingMs before turning off so a quick async action stays visible
+const loadingShown = ref(props.loading)
+let loadingStart = 0
+let releaseTimer = null
+
+watch(() => props.loading, (on) => {
+  if (on) {
+    if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null }
+    loadingStart = performance.now()
+    loadingShown.value = true
+    return
+  }
+  const remaining = props.minLoadingMs - (performance.now() - loadingStart)
+  if (remaining <= 0) {
+    loadingShown.value = false
+    return
+  }
+  releaseTimer = setTimeout(() => {
+    loadingShown.value = false
+    releaseTimer = null
+  }, remaining)
+})
+
+onUnmounted(() => { if (releaseTimer) clearTimeout(releaseTimer) })
+
 const btnRef = ref(null)
 let cancelWidthAnim = null
 
 // animate the button's width whenever loading toggles, so the spinner appearing
 // and an optional label swap resize the button smoothly instead of jumping.
 // skipped for icon-only buttons - they are fixed squares.
-watch(() => props.loading, async () => {
+watch(loadingShown, async () => {
   const el = btnRef.value
   if (!el || iconOnly.value) return
 
@@ -74,30 +103,32 @@ watch(() => props.loading, async () => {
   <button
     ref="btnRef"
     :type="type"
-    :disabled="disabled || loading"
-    :aria-busy="loading || undefined"
+    :disabled="disabled || loadingShown"
+    :aria-busy="loadingShown || undefined"
     :class="[
       'pc-btn',
       `pc-btn--${variant}`,
       `pc-btn--${size}`,
-      { 'pc-btn--loading': loading, 'pc-btn--icon': iconOnly },
+      { 'pc-btn--loading': loadingShown, 'pc-btn--icon': iconOnly },
     ]"
   >
     <!-- icon-only: just the icon, or a spinner while loading -->
     <template v-if="iconOnly">
-      <span v-if="loading" class="pc-btn__spinner pc-btn__spinner--solo" aria-hidden="true" />
+      <span v-if="loadingShown" class="pc-btn__spinner pc-btn__spinner--solo" aria-hidden="true" />
       <Icon v-else :icon="icon" class="pc-btn__icon" aria-hidden="true" />
     </template>
 
     <!-- label button: collapsible spinner, optional leading icon, label, hint -->
     <template v-else>
-      <span class="pc-btn__spinner-wrap" :class="{ 'pc-btn__spinner-wrap--on': loading }" aria-hidden="true">
+      <span class="pc-btn__spinner-wrap" :class="{ 'pc-btn__spinner-wrap--on': loadingShown }" aria-hidden="true">
         <span class="pc-btn__spinner" />
       </span>
       <Icon v-if="icon" :icon="icon" class="pc-btn__icon" aria-hidden="true" />
       <span class="pc-btn__label">
-        <template v-if="loading && loadingLabel">{{ loadingLabel }}</template>
-        <slot v-else />
+        <Transition name="pc-btn-roll">
+          <span v-if="loadingShown && loadingLabel" key="load" class="pc-btn__label-text">{{ loadingLabel }}</span>
+          <span v-else key="idle" class="pc-btn__label-text"><slot /></span>
+        </Transition>
       </span>
       <span v-if="hint" class="pc-btn__hint">{{ hint }}</span>
     </template>
@@ -142,8 +173,14 @@ watch(() => props.loading, async () => {
 .pc-btn--primary:active:not(:disabled) { background: var(--midnight-active); }
 .pc-btn--primary:focus-visible { box-shadow: var(--focus-ring); }
 
-.pc-btn--ghost { background: transparent; color: var(--ink); border-color: var(--ink-08); }
-.pc-btn--ghost:hover:not(:disabled) { background: var(--ink-04); border-color: var(--ink-20); }
+/* outline - transparent with a visible border, the in-between weight */
+.pc-btn--outline { background: transparent; color: var(--ink); border-color: var(--ink-08); }
+.pc-btn--outline:hover:not(:disabled) { background: var(--ink-04); border-color: var(--ink-20); }
+.pc-btn--outline:active:not(:disabled) { background: var(--ink-08); }
+
+/* ghost - truly chrome-less, no border, only a faint hover fill */
+.pc-btn--ghost { background: transparent; color: var(--ink-60); border-color: transparent; }
+.pc-btn--ghost:hover:not(:disabled) { background: var(--ink-04); color: var(--ink); }
 .pc-btn--ghost:active:not(:disabled) { background: var(--ink-08); }
 
 .pc-btn--subtle { background: var(--ink-04); color: var(--ink); }
@@ -159,20 +196,34 @@ watch(() => props.loading, async () => {
 .pc-btn--glass:active:not(:disabled) { background: rgba(255, 255, 255, 0.28); }
 .pc-btn--glass:focus-visible { box-shadow: var(--focus-ring-on-dark); }
 
-/* danger - outlined, for destructive / rejecting actions */
+/* danger - subtle tinted fill, no border, for destructive / rejecting actions */
 .pc-btn--danger {
-  background: transparent;
+  background: rgba(179, 38, 30, 0.06);
   color: var(--status-failed);
-  border-color: rgba(179, 38, 30, 0.35);
+  border-color: transparent;
 }
-.pc-btn--danger:hover:not(:disabled) { background: var(--status-failed-bg); border-color: rgba(179, 38, 30, 0.5); }
-.pc-btn--danger:active:not(:disabled) { background: rgba(179, 38, 30, 0.14); }
+.pc-btn--danger:hover:not(:disabled) { background: rgba(179, 38, 30, 0.12); }
+.pc-btn--danger:active:not(:disabled) { background: rgba(179, 38, 30, 0.18); }
 .pc-btn--danger:focus-visible { box-shadow: var(--focus-ring-danger); }
 
 .pc-btn--sm { padding: 0 10px; min-height: var(--control-h-sm); font-size: 13px; }
 .pc-btn--lg { padding: 0 18px; min-height: var(--control-h-lg); font-size: 15px; }
 
-.pc-btn__label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.pc-btn__label { position: relative; display: inline-flex; align-items: center; white-space: nowrap; }
+.pc-btn__label-text { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+/* the loading label rolls up into place, matching CodeBlock's copy swap. the
+   leaving label is taken out of flow so the entering label defines the width -
+   otherwise the button's width animation measures the wrong target and stutters */
+.pc-btn-roll-enter-active,
+.pc-btn-roll-leave-active { transition: opacity 175ms ease, transform 175ms ease; }
+.pc-btn-roll-leave-active { position: absolute; top: 0; left: 0; }
+.pc-btn-roll-enter-from { opacity: 0; transform: translateY(7px); }
+.pc-btn-roll-leave-to { opacity: 0; transform: translateY(-7px); }
+@media (prefers-reduced-motion: reduce) {
+  .pc-btn-roll-enter-active,
+  .pc-btn-roll-leave-active { transition: none; }
+}
 
 /* icon */
 .pc-btn__icon { font-size: 16px; flex-shrink: 0; }

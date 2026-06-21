@@ -1,6 +1,6 @@
 <script setup>
 defineProps({
-  // default | active | warning | paused | failed | draft | dark | solid
+  // default | active | warning | paused | failed | draft | solid
   variant: { type: String, default: "default" },
   size: { type: String, default: "sm" }, // sm | md
   dot: { type: Boolean, default: false },
@@ -44,11 +44,6 @@ defineProps({
 .pc-badge--paused { color: var(--status-paused); background: var(--status-paused-bg); border-color: transparent; }
 .pc-badge--failed { color: var(--status-failed); background: var(--status-failed-bg); border-color: transparent; }
 .pc-badge--draft { color: var(--status-draft); background: var(--status-draft-bg); border-color: transparent; }
-.pc-badge--dark {
-  background: var(--paper-on-dark-12);
-  border-color: var(--paper-on-dark-12);
-  color: var(--paper-on-dark);
-}
 /* solid - filled midnight, white text (the high-signal tag) */
 .pc-badge--solid {
   background: var(--midnight);

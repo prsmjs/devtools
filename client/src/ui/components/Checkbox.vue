@@ -49,6 +49,8 @@ const onChange = (e) => emit("update:modelValue", e.target.checked)
   transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 .pc-check:hover .pc-check__box { border-color: var(--ink-40); }
+.pc-check:active:not(.pc-check--disabled) .pc-check__box { background: var(--ink-08); border-color: var(--ink-40); }
+.pc-check:active:not(.pc-check--disabled) .pc-check__input:checked + .pc-check__box { background: var(--midnight-active); border-color: var(--midnight-active); }
 .pc-check__input:focus-visible + .pc-check__box { box-shadow: var(--focus-ring); border-color: var(--midnight); }
 .pc-check__input:checked + .pc-check__box {
   background: var(--midnight);

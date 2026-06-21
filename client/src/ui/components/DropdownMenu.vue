@@ -110,6 +110,11 @@ const onSelect = (item) => {
 .pc-menu__item:focus-visible:not(:disabled) { background: var(--ink-04); }
 .pc-menu__item--danger { color: var(--status-failed); }
 .pc-menu__item--danger:hover:not(:disabled) { background: var(--status-failed-bg); }
+/* press feedback - a notch darker than hover */
+.pc-menu__item:active:not(:disabled) { background: var(--ink-08); }
+.pc-menu__item--danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--status-failed) 18%, var(--paper));
+}
 .pc-menu__item--disabled { color: var(--ink-40); cursor: not-allowed; }
 .pc-menu__icon { font-size: 14px; opacity: 0.8; }
 .pc-menu__label { flex: 1; }

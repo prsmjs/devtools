@@ -18,6 +18,16 @@ const props = defineProps({
   // hover-lift + pointer; renders as <a> when href is set
   interactive: { type: Boolean, default: false },
   href: { type: String, default: null },
+  // override the monogram chip's background and text color (any css color)
+  monogramBg: { type: String, default: "" },
+  monogramColor: { type: String, default: "" },
+})
+
+const monogramStyle = computed(() => {
+  const s = {}
+  if (props.monogramBg) s.background = props.monogramBg
+  if (props.monogramColor) s.color = props.monogramColor
+  return s
 })
 
 const tag = computed(() => props.href ? "a" : "div")
@@ -37,6 +47,7 @@ const metricCols = computed(() => Math.min(props.metrics.length || 1, props.metr
         <span
           v-if="monogram"
           :class="['pc-entity-card__monogram', { 'pc-entity-card__monogram--plain': !gradient }]"
+          :style="monogramStyle"
         >{{ monogram }}</span>
       </slot>
       <div class="pc-entity-card__status">

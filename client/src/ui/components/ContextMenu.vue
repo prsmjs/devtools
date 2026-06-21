@@ -55,7 +55,7 @@ const keysOf = (s) => Array.isArray(s) ? s : (s == null ? [] : [s])
                 <Icon v-if="item.icon" :icon="item.icon" />
               </span>
               <span class="pc-ctxmenu__label">{{ item.label }}</span>
-              <span class="pc-ctxmenu__chevron" aria-hidden="true">›</span>
+              <Icon icon="lucide:chevron-right" class="pc-ctxmenu__chevron" aria-hidden="true" />
             </ContextMenuSubTrigger>
             <ContextMenuPortal>
               <ContextMenuSubContent class="pc-ctxmenu" :side-offset="4" :collision-padding="8">
@@ -139,11 +139,17 @@ const keysOf = (s) => Array.isArray(s) ? s : (s == null ? [] : [s])
   outline: none;
   user-select: none;
   color: var(--ink);
+  transition: background 120ms ease;
 }
 .pc-ctxmenu__item[data-highlighted],
 .pc-ctxmenu__item[data-state="open"] { background: var(--ink-04); }
 .pc-ctxmenu__item--danger { color: var(--status-failed); }
 .pc-ctxmenu__item--danger[data-highlighted] { background: var(--status-failed-bg); }
+/* press feedback - a notch darker than the highlighted state */
+.pc-ctxmenu__item:active { background: var(--ink-08); }
+.pc-ctxmenu__item--danger:active {
+  background: color-mix(in srgb, var(--status-failed) 18%, var(--paper));
+}
 .pc-ctxmenu__item--disabled,
 .pc-ctxmenu__item[data-disabled] { color: var(--ink-40); pointer-events: none; }
 .pc-ctxmenu__icon {
@@ -181,10 +187,9 @@ const keysOf = (s) => Array.isArray(s) ? s : (s == null ? [] : [s])
   line-height: 1;
 }
 .pc-ctxmenu__chevron {
-  font-family: var(--display);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ink-40);
-  line-height: 1;
+  flex-shrink: 0;
 }
 .pc-ctxmenu__divider {
   height: 1px;

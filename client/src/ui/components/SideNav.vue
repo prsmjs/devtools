@@ -141,8 +141,8 @@ const isActive = (item) => item.active ?? (item.key === props.activeKey)
   height: 18px;
   padding: 0 5px;
   border-radius: var(--badge-radius);
-  background: var(--lavender);
-  color: var(--midnight);
+  background: var(--ink-08);
+  color: var(--ink-60);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 700;

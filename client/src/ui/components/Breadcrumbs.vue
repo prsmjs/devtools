@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue"
+import Popover from "./Popover.vue"
 
 const props = defineProps({
   // items: [{ label, to?, icon? }] - last item is treated as the current page
@@ -30,14 +31,53 @@ const onClick = (item, isLast, e) => {
     emit("select", item)
   }
 }
+
+const onHiddenClick = (item, close, e) => {
+  if (!item.to) {
+    e.preventDefault()
+    emit("select", item)
+  }
+  close()
+}
 </script>
 
 <template>
   <nav class="pc-crumbs" aria-label="Breadcrumb">
     <ol class="pc-crumbs__list">
       <template v-for="(node, i) in visible" :key="i">
-        <li v-if="node._kind === 'ellipsis'" class="pc-crumbs__item pc-crumbs__item--ellipsis" aria-hidden="true">
-          <span class="pc-crumbs__ellipsis">…</span>
+        <li v-if="node._kind === 'ellipsis'" class="pc-crumbs__item pc-crumbs__item--ellipsis">
+          <Popover placement="bottom-start" :offset="6">
+            <template #trigger="{ open }">
+              <button
+                type="button"
+                :class="['pc-crumbs__ellipsis-btn', { 'pc-crumbs__ellipsis-btn--open': open }]"
+                aria-label="Show collapsed breadcrumbs"
+                aria-haspopup="menu"
+                :aria-expanded="open"
+              >
+                <span class="pc-crumbs__ellipsis">…</span>
+              </button>
+            </template>
+            <template #default="{ close }">
+              <div class="pc-crumbs__menu" role="menu">
+                <component
+                  :is="h.to ? 'a' : 'button'"
+                  v-for="(h, hi) in node.hidden"
+                  :key="hi"
+                  :href="h.to || undefined"
+                  :type="h.to ? undefined : 'button'"
+                  class="pc-crumbs__menu-item"
+                  role="menuitem"
+                  @click="onHiddenClick(h, close, $event)"
+                >
+                  <span v-if="h.icon" class="pc-crumbs__icon">
+                    <slot name="icon" :item="h">{{ h.icon }}</slot>
+                  </span>
+                  <span class="pc-crumbs__menu-label">{{ h.label }}</span>
+                </component>
+              </div>
+            </template>
+          </Popover>
         </li>
         <li
           v-else
@@ -90,7 +130,7 @@ const onClick = (item, isLast, e) => {
   padding: 2px 4px;
   border-radius: 3px;
   outline: none;
-  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 60ms ease;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -98,6 +138,7 @@ const onClick = (item, isLast, e) => {
   max-width: 200px;
 }
 .pc-crumbs__link:hover:not(.pc-crumbs__link--current) { color: var(--ink); background: var(--ink-04); }
+.pc-crumbs__link:active:not(.pc-crumbs__link--current) { background: var(--ink-08); color: var(--ink); transform: translateY(1px); }
 .pc-crumbs__link:focus-visible { box-shadow: var(--focus-ring); }
 .pc-crumbs__link--current {
   color: var(--ink);
@@ -117,9 +158,57 @@ const onClick = (item, isLast, e) => {
   line-height: 1;
   user-select: none;
 }
-.pc-crumbs__ellipsis {
+
+/* collapsed-items trigger - a real button that opens the menu */
+.pc-crumbs__ellipsis-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 3px;
   color: var(--ink-40);
-  padding: 0 4px;
+  cursor: pointer;
+  outline: none;
+  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 60ms ease;
+}
+.pc-crumbs__ellipsis-btn:hover,
+.pc-crumbs__ellipsis-btn--open { color: var(--ink); background: var(--ink-04); }
+.pc-crumbs__ellipsis-btn:active { background: var(--ink-08); color: var(--ink); transform: translateY(1px); }
+.pc-crumbs__ellipsis-btn:focus-visible { box-shadow: var(--focus-ring); }
+.pc-crumbs__ellipsis {
   letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+/* dropdown menu of the collapsed crumbs - cancels the popover's 12px padding */
+.pc-crumbs__menu {
+  margin: -8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+}
+.pc-crumbs__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-sharp);
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: -0.13px;
+  color: var(--ink-60);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  outline: none;
+  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.pc-crumbs__menu-item:hover { color: var(--ink); background: var(--ink-04); }
+.pc-crumbs__menu-item:focus-visible { box-shadow: var(--focus-ring); }
+.pc-crumbs__menu-item:active { background: var(--ink-08); }
+.pc-crumbs__menu-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

@@ -29,11 +29,49 @@ const onSelect = (item) => {
 }
 
 const indent = computed(() => props.level * 16)
+
+// expand/collapse height animation - children stagger in via CSS
+const reducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+
+const animateHeight = (el, from, to, done) => {
+  el.style.overflow = "hidden"
+  el.style.height = from
+  void el.offsetHeight
+  el.style.transition = "height 220ms cubic-bezier(0.22, 1, 0.36, 1)"
+  el.style.height = to
+  const end = (e) => {
+    if (e.propertyName !== "height") return
+    el.removeEventListener("transitionend", end)
+    done()
+  }
+  el.addEventListener("transitionend", end)
+}
+const onExpand = (el, done) => {
+  if (reducedMotion()) return done()
+  animateHeight(el, "0px", `${el.scrollHeight}px`, done)
+}
+const onExpanded = (el) => {
+  el.style.height = ""
+  el.style.overflow = ""
+  el.style.transition = ""
+}
+const onCollapse = (el, done) => {
+  if (reducedMotion()) return done()
+  animateHeight(el, `${el.scrollHeight}px`, "0px", done)
+}
+const onCollapsed = onExpanded
 </script>
 
 <template>
   <ul class="pc-tree" :class="{ 'pc-tree--nested': level > 0 }" role="tree">
-    <li v-for="item in items" :key="item.key" role="treeitem" :aria-expanded="item.children ? isExpanded(item.key) : undefined">
+    <li
+      v-for="(item, i) in items"
+      :key="item.key"
+      role="treeitem"
+      :aria-expanded="item.children ? isExpanded(item.key) : undefined"
+      :style="{ '--pc-tree-stagger': `${Math.min(i, 10) * 28}ms` }"
+    >
       <div
         :class="[
           'pc-tree__node',
@@ -72,19 +110,27 @@ const indent = computed(() => props.level * 16)
         </span>
         <span v-if="item.badge != null && item.badge !== 0" class="pc-tree__badge">{{ item.badge }}</span>
       </div>
-      <Tree
-        v-if="item.children?.length && isExpanded(item.key)"
-        :items="item.children"
-        :expanded="expanded"
-        :selected="selected"
-        :level="level + 1"
-        @update:expanded="v => emit('update:expanded', v)"
-        @update:selected="v => emit('update:selected', v)"
-        @select="i => emit('select', i)"
+      <Transition
+        :css="false"
+        @enter="onExpand"
+        @after-enter="onExpanded"
+        @leave="onCollapse"
+        @after-leave="onCollapsed"
       >
-        <template v-if="$slots.icon" #icon="slotProps"><slot name="icon" v-bind="slotProps" /></template>
-        <template v-if="$slots.label" #label="slotProps"><slot name="label" v-bind="slotProps" /></template>
-      </Tree>
+        <Tree
+          v-if="item.children?.length && isExpanded(item.key)"
+          :items="item.children"
+          :expanded="expanded"
+          :selected="selected"
+          :level="level + 1"
+          @update:expanded="v => emit('update:expanded', v)"
+          @update:selected="v => emit('update:selected', v)"
+          @select="i => emit('select', i)"
+        >
+          <template v-if="$slots.icon" #icon="slotProps"><slot name="icon" v-bind="slotProps" /></template>
+          <template v-if="$slots.label" #label="slotProps"><slot name="label" v-bind="slotProps" /></template>
+        </Tree>
+      </Transition>
     </li>
   </ul>
 </template>
@@ -92,6 +138,24 @@ const indent = computed(() => props.level * 16)
 <style scoped>
 .pc-tree { list-style: none; padding: 0; margin: 0; }
 .pc-tree--nested { margin: 0; }
+
+/* nested rows fade+slide in with a subtle per-row stagger when expanding */
+.pc-tree--nested > li {
+  opacity: 0;
+  translate: -4px 0;
+  animation: pc-tree-row-in 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--pc-tree-stagger, 0ms);
+}
+@keyframes pc-tree-row-in {
+  to { opacity: 1; translate: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-tree--nested > li {
+    animation: none;
+    opacity: 1;
+    translate: 0 0;
+  }
+}
 .pc-tree__node {
   display: flex;
   align-items: center;
