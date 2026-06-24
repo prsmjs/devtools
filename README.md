@@ -56,6 +56,19 @@ app.listen(3000)
 
 Everything is optional. Only pass what you have - tabs appear only for connected subsystems.
 
+To watch several queues at once - for example one queue per namespace, each with its own concurrency - pass a named map instead of a single instance. Each queue is tracked and displayed separately under the name you give it:
+
+```js
+const downloads = new Queue({ namespace: 'downloads', concurrency: 2 })
+const llm = new Queue({ namespace: 'llm', concurrency: 10 })
+
+app.use('/devtools', prsmDevtools({
+  queue: { downloads, llm },
+}))
+```
+
+A single `queue: someQueue` is shorthand for `queue: { default: someQueue }`.
+
 ## What You See
 
 **Overview** - unified event stream from all subsystems, live via SSE
@@ -70,7 +83,7 @@ Everything is optional. Only pass what you have - tabs appear only for connected
 
 Includes a connection picker sidebar for filtering all views by a specific client, and a registered patterns panel showing exposed channels, records, collections, presence, and commands.
 
-**Queue** - in-flight count (polled), completed/failed/retried counters (session), event log
+**Queue** - in-flight count (polled), completed/failed/retried counters (session), event log. Pass a single queue or a named map of queues - each named queue is tracked and shown separately, so a server running several queues (for example one per namespace) sees each one's depth and throughput on its own.
 
 **Cron** - registered jobs with next fire times, fire/error event log
 
@@ -108,7 +121,7 @@ app.use('/devtools', prsmDevtools(options))
 | Option | Type | Description |
 | --- | --- | --- |
 | `realtime` | `RealtimeServer` | A `@prsm/realtime` server instance |
-| `queue` | `Queue` | A `@prsm/queue` instance |
+| `queue` | `Queue` or `Object<string, Queue>` | A `@prsm/queue` instance, or a named map of queues |
 | `cron` | `Cron` | A `@prsm/cron` instance |
 | `limit` | `Object<string, Limiter>` | Named limiters from `@prsm/limit` |
 | `workflow` | `WorkflowEngine` | An `@prsm/workflow` engine instance |
@@ -128,7 +141,9 @@ The middleware exposes these under its mount path:
 | --- | --- |
 | `GET /api/config` | Which subsystems are connected |
 | `GET /api/events` | SSE stream (queue, cron, workflow, realtime record and channel message updates) |
-| `GET /api/queue` | Current in-flight count |
+| `GET /api/queue` | Snapshot of every registered queue, keyed by name |
+| `GET /api/queue/:name` | Snapshot of one named queue |
+| `GET /api/queue/:name/history` | Recent complete/retry/failed events for one named queue |
 | `GET /api/cron` | Registered jobs with next fire times |
 | `GET /api/limits` | List of named limiters |
 | `GET /api/limits/:name/peek/:key` | Peek at a limiter key |
